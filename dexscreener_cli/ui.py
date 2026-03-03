@@ -232,6 +232,8 @@ def render_new_runner_spotlight(
         txt.append(" | ", style="dim")
         txt.append(f"score {candidate.score:.1f}", style=_score_style(candidate.score))
         txt.append(" | ", style="dim")
+        txt.append(f"ready {candidate.analytics.breakout_readiness:.0f}", style="bright_magenta")
+        txt.append(" | ", style="dim")
         txt.append(f"age {age}\n", style="white")
     return Panel(
         txt,
@@ -262,6 +264,9 @@ def render_new_runners_table(
     table.add_column("#", justify="right")
     table.add_column("Token", style="bold yellow")
     table.add_column("Score", justify="right")
+    table.add_column("Ready", justify="right")
+    table.add_column("Comp", justify="right")
+    table.add_column("RS", justify="right")
     table.add_column("1h", justify="right")
     table.add_column("24h", justify="right")
     table.add_column("1h Vol", justify="right")
@@ -269,18 +274,34 @@ def render_new_runners_table(
     table.add_column("Txns1h", justify="right")
     table.add_column("Liquidity", justify="right")
     table.add_column("Age", justify="right")
+    table.add_column("HL", justify="right")
+    table.add_column("Decay", justify="right")
     table.add_column("Flow", no_wrap=True)
     table.add_column("Signal")
 
     for i, candidate in enumerate(candidates[:limit], start=1):
         p = candidate.pair
+        a = candidate.analytics
         signal = ", ".join(candidate.tags[:2]) if candidate.tags else candidate.discovery
         score = Text(f"{candidate.score:.1f}", style=_score_style(candidate.score))
         age = Text(_age_label(p.age_hours), style="bright_cyan")
+        rs_style = "bold bright_green" if a.relative_strength >= 8 else "bold bright_red" if a.relative_strength <= -8 else "white"
+        readiness_style = "bold bright_green" if a.breakout_readiness >= 70 else "yellow" if a.breakout_readiness >= 55 else "dim"
+        decay_text = "-"
+        decay_style = "dim"
+        if a.momentum_decay_ratio is not None:
+            decay_text = f"{a.momentum_decay_ratio:.2f}"
+            decay_style = "bold bright_red" if a.fast_decay or a.momentum_decay_ratio < 0.35 else "white"
+        half_life_text = "-"
+        if a.momentum_half_life_min is not None:
+            half_life_text = f"{a.momentum_half_life_min:.1f}m"
         table.add_row(
             str(i),
             _safe_text(p.base_symbol),
             score,
+            Text(f"{a.breakout_readiness:.0f}", style=readiness_style),
+            Text(f"{a.compression_score:.0f}", style="bright_cyan"),
+            Text(f"{a.relative_strength:+.1f}", style=rs_style),
             Text(fmt_pct(p.price_change_h1), style=_pct_style(p.price_change_h1)),
             Text(fmt_pct(p.price_change_h24), style=_pct_style(p.price_change_h24)),
             fmt_usd(p.volume_h1),
@@ -288,11 +309,31 @@ def render_new_runners_table(
             str(p.txns_h1),
             fmt_usd(p.liquidity_usd),
             age,
+            half_life_text,
+            Text(decay_text, style=decay_style),
             _flow_meter(p.buys_h1, p.sells_h1),
             Text(_safe_text(signal), style=_signal_style(candidate.tags, candidate.discovery)),
         )
     if not candidates:
-        table.add_row("-", "No fresh runners found", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-")
+        table.add_row(
+            "-",
+            "No fresh runners found",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
+        )
     return table
 
 
@@ -307,6 +348,10 @@ def render_top_runner_cards(candidates: list[HotTokenCandidate], *, pulse: bool 
             txt.append(f"#{rank} ", style="bold bright_white")
             txt.append(f"{_safe_text(p.base_symbol)}\n", style="bold bright_cyan")
             txt.append(f"Score {candidate.score:.1f}\n", style=_score_style(candidate.score))
+            txt.append("Ready: ", style="dim")
+            txt.append(f"{candidate.analytics.breakout_readiness:.0f}\n", style="bright_magenta")
+            txt.append("RS: ", style="dim")
+            txt.append(f"{candidate.analytics.relative_strength:+.1f}\n", style="white")
             txt.append("1h: ", style="dim")
             txt.append(f"{fmt_pct(p.price_change_h1)}\n", style=_pct_style(p.price_change_h1))
             txt.append("24h Vol: ", style="dim")
@@ -369,6 +414,8 @@ def render_rank_movers_table(
     table.add_column("Move", justify="right")
     table.add_column("Token", style="bold yellow")
     table.add_column("Score", justify="right")
+    table.add_column("Ready", justify="right")
+    table.add_column("RS", justify="right")
     table.add_column("1h", justify="right")
     table.add_column("Vol1h", justify="right")
     table.add_column("Tx1h", justify="right")
@@ -381,6 +428,8 @@ def render_rank_movers_table(
             _move_text(key=candidate.key, rank=rank, previous_ranks=previous_ranks),
             _safe_text(p.base_symbol),
             Text(f"{candidate.score:.1f}", style=_score_style(candidate.score)),
+            Text(f"{candidate.analytics.breakout_readiness:.0f}", style="bright_magenta"),
+            Text(f"{candidate.analytics.relative_strength:+.1f}", style="white"),
             Text(fmt_pct(p.price_change_h1), style=_pct_style(p.price_change_h1)),
             fmt_usd(p.volume_h1),
             str(p.txns_h1),
@@ -388,7 +437,7 @@ def render_rank_movers_table(
         )
 
     if not candidates:
-        table.add_row("-", "-", "No movers yet", "-", "-", "-", "-", "-")
+        table.add_row("-", "-", "No movers yet", "-", "-", "-", "-", "-", "-", "-")
     return table
 
 

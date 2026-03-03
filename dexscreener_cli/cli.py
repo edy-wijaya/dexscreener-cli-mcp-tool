@@ -71,6 +71,7 @@ def _parse_chains(raw: str) -> tuple[str, ...]:
 
 def _candidate_json(c: HotTokenCandidate) -> dict[str, object]:
     p = c.pair
+    a = c.analytics
     return {
         "chainId": p.chain_id,
         "tokenAddress": p.base_address,
@@ -92,6 +93,18 @@ def _candidate_json(c: HotTokenCandidate) -> dict[str, object]:
         "hasProfile": c.has_profile,
         "score": c.score,
         "tags": c.tags,
+        "analytics": {
+            "compressionScore": a.compression_score,
+            "breakoutReadiness": a.breakout_readiness,
+            "volumeVelocity": a.volume_velocity,
+            "txnVelocity": a.txn_velocity,
+            "relativeStrength": a.relative_strength,
+            "chainBaselineH1": a.chain_baseline_h1,
+            "boostVelocityPerMin": a.boost_velocity,
+            "momentumHalfLifeMin": a.momentum_half_life_min,
+            "momentumDecayRatio": a.momentum_decay_ratio,
+            "fastDecay": a.fast_decay,
+        },
     }
 
 
