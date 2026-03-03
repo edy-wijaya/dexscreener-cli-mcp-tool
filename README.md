@@ -60,6 +60,16 @@ One-shot scan:
 ds hot --chains solana,base --limit 20
 ```
 
+Top AI tokens on Base (color leaderboard):
+```bash
+ds ai-top --chain base --limit 10
+```
+
+Stricter tradable AI leaderboard:
+```bash
+ds ai-top --chain base --limit 10 --min-liquidity-usd 25000 --min-volume-h24-usd 10000 --min-txns-h1 5
+```
+
 Best 10 new runners of the day on Base:
 ```bash
 ds new-runners --chain base --limit 10 --max-age-hours 24
