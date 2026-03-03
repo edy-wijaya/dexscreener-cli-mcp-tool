@@ -44,6 +44,7 @@ This tool shows **proxy concentration signals** (liquidity-to-market-cap, volume
 2. [System Architecture](docs/SYSTEM_ARCHITECTURE.md)
 3. [UI/UX Spec](docs/UI_UX_SPEC.md)
 4. [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
+5. [Daemon Deployment](docs/DAEMON_DEPLOYMENT.md)
 
 ## Install
 ```bash
@@ -107,6 +108,8 @@ ds task create scout-sol --preset fast-sol --interval-seconds 60 --notes "baseli
 ds task list
 ds task run scout-sol
 ds task configure scout-sol --alert-min-score 78 --discord-webhook-url https://discord.com/api/webhooks/...
+ds task test-alert scout-sol --no-with-scan
+ds task runs --task scout-sol --limit 30
 ds task status scout-sol running
 ds task status scout-sol done
 ```
@@ -127,6 +130,19 @@ Task alert channel options:
 3. `--telegram-bot-token` + `--telegram-chat-id`
 4. `--alert-min-score`
 5. `--alert-cooldown-seconds`
+6. `--alert-template`
+7. `--alert-top-n`
+8. `--alert-min-liquidity-usd`
+9. `--alert-max-vol-liq-ratio`
+10. `--alert-blocked-terms`
+11. `--alert-blocked-chains`
+12. `--webhook-extra-json` (JSON object)
+
+State backup/restore:
+```bash
+ds state export --path ./dexscreener-state-export.json
+ds state import --path ./dexscreener-state-export.json --mode merge
+```
 
 ## MCP usage
 Run MCP server on stdio:
@@ -144,6 +160,10 @@ Exposed tools:
 7. `list_tasks`
 8. `run_task_scan`
 9. `run_due_tasks`
+10. `test_task_alert`
+11. `list_task_runs`
+12. `export_state_bundle`
+13. `import_state_bundle`
 
 ## Recommended default profile
 For spotting new runners with manageable noise:
