@@ -105,6 +105,20 @@ class PairSnapshot:
 
 
 @dataclass(slots=True)
+class CandidateAnalytics:
+    compression_score: float = 0.0
+    breakout_readiness: float = 0.0
+    volume_velocity: float = 0.0
+    txn_velocity: float = 0.0
+    relative_strength: float = 0.0
+    chain_baseline_h1: float = 0.0
+    boost_velocity: float = 0.0
+    momentum_half_life_min: float | None = None
+    momentum_decay_ratio: float | None = None
+    fast_decay: bool = False
+
+
+@dataclass(slots=True)
 class HotTokenCandidate:
     pair: PairSnapshot
     score: float
@@ -113,6 +127,7 @@ class HotTokenCandidate:
     has_profile: bool
     discovery: str
     tags: list[str] = field(default_factory=list)
+    analytics: CandidateAnalytics = field(default_factory=CandidateAnalytics)
 
     @property
     def key(self) -> tuple[str, str]:

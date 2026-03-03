@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 from dataclasses import dataclass
+from statistics import median
+import time
 from typing import Any
 
 from .client import DexScreenerClient
 from .config import ScanFilters
-from .models import HotTokenCandidate, PairSnapshot
+from .models import CandidateAnalytics, HotTokenCandidate, PairSnapshot
 from .scoring import score_hotness
 
 
@@ -24,6 +26,165 @@ class _SeedToken:
 class HotScanner:
     def __init__(self, client: DexScreenerClient) -> None:
         self._client = client
+        self._boost_history: dict[tuple[str, str], tuple[float, float]] = {}
+        self._momentum_history: dict[tuple[str, str], list[tuple[float, float]]] = {}
+        self._max_history_points = 20
+        self._history_ttl_seconds = 2 * 60 * 60
+
+    @staticmethod
+    def _clip(value: float, low: float, high: float) -> float:
+        return max(low, min(high, value))
+
+    @staticmethod
+    def _buy_pressure(pair: PairSnapshot) -> float:
+        if pair.txns_h1 <= 0:
+            return 0.0
+        return (pair.buys_h1 - pair.sells_h1) / pair.txns_h1
+
+    @staticmethod
+    def _velocity_components(pair: PairSnapshot) -> tuple[float, float]:
+        vol_baseline = ((pair.volume_h6 - pair.volume_h1) / 5.0) if pair.volume_h6 > pair.volume_h1 else (pair.volume_h24 / 24.0)
+        vol_baseline = max(vol_baseline, 1.0)
+        volume_velocity = pair.volume_h1 / vol_baseline
+
+        tx_h24 = pair.txns_h24
+        tx_baseline = ((tx_h24 - pair.txns_h1) / 23.0) if tx_h24 > pair.txns_h1 else (tx_h24 / 24.0)
+        tx_baseline = max(tx_baseline, 1.0)
+        txn_velocity = pair.txns_h1 / tx_baseline
+        return volume_velocity, txn_velocity
+
+    def _compression_and_readiness(self, pair: PairSnapshot, *, buy_pressure: float, volume_velocity: float, txn_velocity: float) -> tuple[float, float]:
+        price_noise = abs(pair.price_change_h1)
+        compression_price = self._clip((9.0 - price_noise) / 9.0, 0.0, 1.0)
+        flow_build = self._clip((min(volume_velocity, 3.0) / 3.0 + min(txn_velocity, 3.0) / 3.0) / 2.0, 0.0, 1.0)
+        pressure = self._clip((buy_pressure + 0.15) / 0.85, 0.0, 1.0)
+
+        compression_score = self._clip(compression_price * 0.55 + flow_build * 0.30 + pressure * 0.15, 0.0, 1.0)
+        breakout_readiness = self._clip(
+            compression_score * 0.45
+            + (min(volume_velocity, 3.0) / 3.0) * 0.30
+            + (min(txn_velocity, 3.0) / 3.0) * 0.15
+            + pressure * 0.10,
+            0.0,
+            1.0,
+        )
+        return compression_score * 100.0, breakout_readiness * 100.0
+
+    def _boost_velocity(self, key: tuple[str, str], boost_total: float, now_s: float) -> float:
+        previous = self._boost_history.get(key)
+        self._boost_history[key] = (now_s, boost_total)
+        if previous is None:
+            return 0.0
+        dt_min = (now_s - previous[0]) / 60.0
+        if dt_min <= 0:
+            return 0.0
+        return (boost_total - previous[1]) / dt_min
+
+    def _momentum_metrics(self, key: tuple[str, str], price_change_h1: float, now_s: float) -> tuple[float | None, float | None, bool]:
+        history = self._momentum_history.setdefault(key, [])
+        history.append((now_s, max(price_change_h1, 0.0)))
+        cutoff = now_s - self._history_ttl_seconds
+        history = [entry for entry in history if entry[0] >= cutoff]
+        if len(history) > self._max_history_points:
+            history = history[-self._max_history_points :]
+        self._momentum_history[key] = history
+
+        if len(history) < 2:
+            return None, None, False
+
+        peak_idx = max(range(len(history)), key=lambda idx: history[idx][1])
+        peak_ts, peak_val = history[peak_idx]
+        if peak_val <= 0:
+            return None, None, False
+
+        current_val = history[-1][1]
+        decay_ratio = current_val / peak_val
+        half_life_min: float | None = None
+        half_level = peak_val * 0.5
+        for ts, value in history[peak_idx:]:
+            if value <= half_level:
+                half_life_min = (ts - peak_ts) / 60.0
+                break
+
+        fast_decay = half_life_min is not None and half_life_min <= 12.0 and decay_ratio <= 0.45
+        return half_life_min, decay_ratio, fast_decay
+
+    def _enrich_candidates(self, candidates: list[HotTokenCandidate]) -> None:
+        if not candidates:
+            return
+
+        now_s = time.time()
+        chain_momentum: dict[str, list[float]] = defaultdict(list)
+        chain_velocity: dict[str, list[float]] = defaultdict(list)
+        metrics: dict[tuple[str, str], tuple[float, float, float, float, float]] = {}
+
+        for candidate in candidates:
+            pair = candidate.pair
+            buy_pressure = self._buy_pressure(pair)
+            volume_velocity, txn_velocity = self._velocity_components(pair)
+            compression_score, breakout_readiness = self._compression_and_readiness(
+                pair,
+                buy_pressure=buy_pressure,
+                volume_velocity=volume_velocity,
+                txn_velocity=txn_velocity,
+            )
+            metrics[candidate.key] = (buy_pressure, volume_velocity, txn_velocity, compression_score, breakout_readiness)
+            chain_momentum[pair.chain_id].append(pair.price_change_h1)
+            chain_velocity[pair.chain_id].append(volume_velocity)
+
+        chain_baseline_h1 = {chain: median(values) for chain, values in chain_momentum.items() if values}
+        chain_baseline_velocity = {chain: median(values) for chain, values in chain_velocity.items() if values}
+
+        for candidate in candidates:
+            pair = candidate.pair
+            key = candidate.key
+            buy_pressure, volume_velocity, txn_velocity, compression_score, breakout_readiness = metrics[key]
+            baseline_h1 = chain_baseline_h1.get(pair.chain_id, 0.0)
+            baseline_velocity = chain_baseline_velocity.get(pair.chain_id, 1.0)
+            relative_strength = (pair.price_change_h1 - baseline_h1) + ((volume_velocity - baseline_velocity) * 5.0)
+
+            boost_velocity = self._boost_velocity(key, candidate.boost_total, now_s)
+            half_life_min, decay_ratio, fast_decay = self._momentum_metrics(key, pair.price_change_h1, now_s)
+            candidate.analytics = CandidateAnalytics(
+                compression_score=round(compression_score, 2),
+                breakout_readiness=round(breakout_readiness, 2),
+                volume_velocity=round(volume_velocity, 3),
+                txn_velocity=round(txn_velocity, 3),
+                relative_strength=round(relative_strength, 2),
+                chain_baseline_h1=round(baseline_h1, 2),
+                boost_velocity=round(boost_velocity, 3),
+                momentum_half_life_min=round(half_life_min, 2) if half_life_min is not None else None,
+                momentum_decay_ratio=round(decay_ratio, 3) if decay_ratio is not None else None,
+                fast_decay=fast_decay,
+            )
+
+            adjusted = candidate.score
+            adjusted += (breakout_readiness - 50.0) * 0.08
+            adjusted += self._clip(relative_strength, -25.0, 25.0) * 0.15
+            adjusted += self._clip(boost_velocity, -10.0, 10.0) * 0.2
+            if fast_decay:
+                adjusted -= 12.0
+            candidate.score = round(max(0.0, adjusted), 2)
+
+            tags = list(candidate.tags)
+            if compression_score >= 72 and volume_velocity >= 1.15 and txn_velocity >= 1.15:
+                tags.append("volatility-compression")
+            if breakout_readiness >= 68:
+                tags.append("breakout-ready")
+            if relative_strength >= 8:
+                tags.append("rs-leader")
+            elif relative_strength <= -8:
+                tags.append("rs-laggard")
+            if boost_velocity >= 3:
+                tags.append("boost-accel")
+            elif boost_velocity <= -1:
+                tags.append("boost-decay")
+            if fast_decay:
+                tags.append("momentum-decay")
+            elif half_life_min is not None and half_life_min >= 25 and (decay_ratio or 0.0) > 0.65:
+                tags.append("momentum-persistent")
+            # keep stable order while dropping duplicates
+            candidate.tags = list(dict.fromkeys(tags))
 
     async def _collect_seeds(self, chains: tuple[str, ...]) -> dict[tuple[str, str], _SeedToken]:
         boosts_top, boosts_latest, profiles = await asyncio.gather(
@@ -182,10 +343,15 @@ class HotScanner:
             if existing is None or candidate.score > existing.score:
                 dedup[key] = candidate
 
+        enriched = list(dedup.values())
+        self._enrich_candidates(enriched)
+
         ranked = sorted(
-            dedup.values(),
+            enriched,
             key=lambda c: (
                 c.score,
+                c.analytics.breakout_readiness,
+                c.analytics.relative_strength,
                 c.pair.volume_h24,
                 c.pair.txns_h1,
                 c.pair.liquidity_usd,
