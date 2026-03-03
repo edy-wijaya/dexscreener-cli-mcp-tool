@@ -103,12 +103,30 @@ ds preset show fast-sol
 
 Task lifecycle:
 ```bash
-ds task create scout-sol --preset fast-sol --notes "baseline runner scan"
+ds task create scout-sol --preset fast-sol --interval-seconds 60 --notes "baseline runner scan"
 ds task list
 ds task run scout-sol
+ds task configure scout-sol --alert-min-score 78 --discord-webhook-url https://discord.com/api/webhooks/...
 ds task status scout-sol running
 ds task status scout-sol done
 ```
+
+Run scheduler daemon:
+```bash
+ds task daemon --all --poll-seconds 5 --default-interval-seconds 120
+```
+
+Run one scheduler cycle and exit:
+```bash
+ds task daemon --all --once
+```
+
+Task alert channel options:
+1. `--webhook-url` (generic JSON webhook)
+2. `--discord-webhook-url`
+3. `--telegram-bot-token` + `--telegram-chat-id`
+4. `--alert-min-score`
+5. `--alert-cooldown-seconds`
 
 ## MCP usage
 Run MCP server on stdio:
@@ -125,6 +143,7 @@ Exposed tools:
 6. `create_task`
 7. `list_tasks`
 8. `run_task_scan`
+9. `run_due_tasks`
 
 ## Recommended default profile
 For spotting new runners with manageable noise:
