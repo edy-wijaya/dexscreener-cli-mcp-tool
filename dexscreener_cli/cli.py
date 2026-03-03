@@ -23,6 +23,8 @@ from .state import ScanPreset, ScanTask, StateStore
 from .task_runner import execute_task_once, select_due_tasks, task_filters as runner_task_filters
 from .ui import (
     build_header,
+    fmt_pct,
+    fmt_usd,
     render_chain_heat_table,
     render_distribution_panel,
     render_flow_panel,
@@ -48,6 +50,24 @@ app.add_typer(task_app, name="task")
 app.add_typer(state_app, name="state")
 console = Console()
 NEW_RUNNER_SORT_MODES: tuple[str, ...] = ("score", "readiness", "rs", "volume", "momentum")
+AI_SEARCH_QUERIES: tuple[str, ...] = ("virtual", "aixbt", "agent", "ai", "gpt", "llm", "bot", "neural", "inference")
+AI_KEYWORDS: tuple[str, ...] = (
+    "ai",
+    "agent",
+    "gpt",
+    "llm",
+    "neural",
+    "model",
+    "intelligence",
+    "bot",
+    "oracle",
+    "assistant",
+    "auton",
+    "compute",
+    "inference",
+    "virtual",
+    "aixbt",
+)
 
 
 def _status_badge(status: str) -> Text:
@@ -64,6 +84,36 @@ def _status_badge(status: str) -> Text:
 
 def _alert_badge(enabled: bool) -> Text:
     return Text("yes", style="bold bright_green") if enabled else Text("no", style="dim")
+
+
+def _as_float(value: object, default: float = 0.0) -> float:
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except Exception:
+        return default
+
+
+def _as_int(value: object, default: int = 0) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except Exception:
+        return default
+
+
+def _pct_text(value: float) -> Text:
+    if value >= 10:
+        return Text(fmt_pct(value), style="bold bright_green")
+    if value > 0:
+        return Text(fmt_pct(value), style="green")
+    if value <= -10:
+        return Text(fmt_pct(value), style="bold bright_red")
+    if value < 0:
+        return Text(fmt_pct(value), style="red")
+    return Text(fmt_pct(value), style="white")
+
+
+def _ai_rows_json(rows: list[dict[str, object]]) -> str:
+    return json.dumps(rows, indent=2, ensure_ascii=True)
 
 
 def _parse_chains(raw: str) -> tuple[str, ...]:
@@ -242,6 +292,87 @@ async def _scan(filters: ScanFilters) -> list[HotTokenCandidate]:
         return await scanner.scan(filters)
 
 
+async def _scan_ai_tokens(
+    *,
+    chain: str,
+    limit: int,
+    min_liquidity_usd: float,
+    min_volume_h24_usd: float,
+    min_txns_h1: int,
+) -> list[dict[str, object]]:
+    chain = chain.lower().strip()
+    all_pairs: list[dict[str, object]] = []
+    async with DexScreenerClient() as client:
+        for query in AI_SEARCH_QUERIES:
+            rows = await client.search_pairs(query)
+            all_pairs.extend(rows)
+
+    pairs = [p for p in all_pairs if str(p.get("chainId", "")).lower() == chain]
+    filtered: list[dict[str, object]] = []
+    for p in pairs:
+        base = p.get("baseToken", {})
+        symbol = str((base or {}).get("symbol", ""))
+        name = str((base or {}).get("name", ""))
+        labels = " ".join(str(x) for x in (p.get("labels", []) or []))
+        hay = f"{symbol} {name} {labels}".lower()
+        if any(keyword in hay for keyword in AI_KEYWORDS):
+            filtered.append(p)
+
+    dedup: dict[str, dict[str, object]] = {}
+    for p in filtered:
+        base = p.get("baseToken", {})
+        token_address = str((base or {}).get("address", ""))
+        if not token_address:
+            continue
+        prev = dedup.get(token_address)
+        current_vol = _as_float(((p.get("volume", {}) or {}).get("h24")))
+        if prev is None or current_vol > _as_float(((prev.get("volume", {}) or {}).get("h24"))):
+            dedup[token_address] = p
+
+    rows: list[dict[str, object]] = []
+    for p in dedup.values():
+        base = p.get("baseToken", {})
+        tx_h1 = ((p.get("txns", {}) or {}).get("h1", {}) or {})
+        buys_h1 = _as_int(tx_h1.get("buys"))
+        sells_h1 = _as_int(tx_h1.get("sells"))
+        tx1h = buys_h1 + sells_h1
+        vol24 = _as_float(((p.get("volume", {}) or {}).get("h24")))
+        liq = _as_float(((p.get("liquidity", {}) or {}).get("usd")))
+        if vol24 < min_volume_h24_usd:
+            continue
+        if liq < min_liquidity_usd:
+            continue
+        if tx1h < min_txns_h1:
+            continue
+        rows.append(
+            {
+                "chainId": chain,
+                "symbol": str((base or {}).get("symbol", "?")),
+                "name": str((base or {}).get("name", "?")),
+                "tokenAddress": str((base or {}).get("address", "")),
+                "dexId": str(p.get("dexId", "")),
+                "pairAddress": str(p.get("pairAddress", "")),
+                "priceUsd": _as_float(p.get("priceUsd")),
+                "priceChangeH1": _as_float(((p.get("priceChange", {}) or {}).get("h1"))),
+                "priceChangeH24": _as_float(((p.get("priceChange", {}) or {}).get("h24"))),
+                "volumeH24": vol24,
+                "liquidityUsd": liq,
+                "txnsH1": tx1h,
+                "pairUrl": str(p.get("url", "")),
+            }
+        )
+
+    rows.sort(
+        key=lambda r: (
+            _as_float(r.get("volumeH24")),
+            _as_int(r.get("txnsH1")),
+            _as_float(r.get("liquidityUsd")),
+        ),
+        reverse=True,
+    )
+    return rows[:limit]
+
+
 def _render_scan_board(candidates: list[HotTokenCandidate], filters: ScanFilters) -> None:
     console.print(build_header())
     console.print(
@@ -255,6 +386,82 @@ def _render_scan_board(candidates: list[HotTokenCandidate], filters: ScanFilters
         )
     )
     console.print(Columns([render_chain_heat_table(candidates), render_flow_panel(candidates)]))
+
+
+def _render_ai_board(
+    *,
+    chain: str,
+    rows: list[dict[str, object]],
+    min_liquidity_usd: float,
+    min_volume_h24_usd: float,
+    min_txns_h1: int,
+) -> None:
+    table = Table(
+        title=(
+            f"[bold bright_white]Top AI Tokens[/bold bright_white]  "
+            f"[cyan]chain={chain}[/cyan]  "
+            f"[green]liq>={fmt_usd(min_liquidity_usd)}[/green]  "
+            f"[green]vol24>={fmt_usd(min_volume_h24_usd)}[/green]  "
+            f"[magenta]tx1h>={min_txns_h1}[/magenta]"
+        ),
+        box=box.ROUNDED,
+        header_style="bold bright_white",
+        row_styles=["none", "dim"],
+    )
+    table.add_column("#", justify="right")
+    table.add_column("Token", style="bold yellow")
+    table.add_column("Price", justify="right")
+    table.add_column("1h", justify="right")
+    table.add_column("24h", justify="right")
+    table.add_column("24h Vol", justify="right")
+    table.add_column("1h Txns", justify="right")
+    table.add_column("Liquidity", justify="right")
+    table.add_column("Dex")
+
+    for i, row in enumerate(rows, start=1):
+        symbol = str(row.get("symbol", "?"))
+        price = _as_float(row.get("priceUsd"))
+        h1 = _as_float(row.get("priceChangeH1"))
+        h24 = _as_float(row.get("priceChangeH24"))
+        vol24 = _as_float(row.get("volumeH24"))
+        tx1h = _as_int(row.get("txnsH1"))
+        liq = _as_float(row.get("liquidityUsd"))
+        dex = str(row.get("dexId", ""))
+        table.add_row(
+            str(i),
+            symbol,
+            f"${price:,.8f}" if price < 0.01 else f"${price:,.6f}",
+            _pct_text(h1),
+            _pct_text(h24),
+            Text(fmt_usd(vol24), style="bright_cyan" if vol24 >= 100_000 else "cyan"),
+            str(tx1h),
+            Text(fmt_usd(liq), style="green" if liq >= 50_000 else "yellow"),
+            dex,
+        )
+    if not rows:
+        table.add_row("-", "No AI tokens matched filters", "-", "-", "-", "-", "-", "-", "-")
+
+    total_vol = sum(_as_float(r.get("volumeH24")) for r in rows)
+    total_liq = sum(_as_float(r.get("liquidityUsd")) for r in rows)
+    avg_h1 = (
+        sum(_as_float(r.get("priceChangeH1")) for r in rows) / len(rows)
+        if rows
+        else 0.0
+    )
+    summary = Panel(
+        Text(
+            f"Rows: {len(rows)}\n"
+            f"24h volume sum: {fmt_usd(total_vol)}\n"
+            f"Liquidity sum: {fmt_usd(total_liq)}\n"
+            f"Average 1h move: {fmt_pct(avg_h1)}"
+        ),
+        title="[bold bright_white]AI Market Snapshot[/bold bright_white]",
+        border_style="bright_blue",
+        box=box.ROUNDED,
+    )
+    console.print(build_header())
+    console.print(table)
+    console.print(summary)
 
 
 def _new_runner_rank(candidate: HotTokenCandidate) -> tuple[float, float, int, float]:
@@ -391,6 +598,37 @@ def hot(
         typer.echo(json.dumps([_candidate_json(c) for c in candidates], indent=2, ensure_ascii=True))
         return
     _render_scan_board(candidates, filters)
+
+
+@app.command("ai-top")
+def ai_top(
+    chain: Annotated[str, typer.Option(help="Chain ID, defaults to base")] = "base",
+    limit: Annotated[int, typer.Option(help="Max rows to show")] = 10,
+    min_liquidity_usd: Annotated[float, typer.Option(help="Minimum pair liquidity in USD")] = 0.0,
+    min_volume_h24_usd: Annotated[float, typer.Option(help="Minimum 24h volume in USD")] = 0.0,
+    min_txns_h1: Annotated[int, typer.Option(help="Minimum 1h transactions")] = 0,
+    as_json: Annotated[bool, typer.Option("--json", help="Output machine-readable JSON")] = False,
+) -> None:
+    """Show top AI-themed tokens on a chain with a cleaner leaderboard."""
+    rows = asyncio.run(
+        _scan_ai_tokens(
+            chain=chain,
+            limit=limit,
+            min_liquidity_usd=min_liquidity_usd,
+            min_volume_h24_usd=min_volume_h24_usd,
+            min_txns_h1=min_txns_h1,
+        )
+    )
+    if as_json:
+        typer.echo(_ai_rows_json(rows))
+        return
+    _render_ai_board(
+        chain=chain.lower().strip(),
+        rows=rows,
+        min_liquidity_usd=min_liquidity_usd,
+        min_volume_h24_usd=min_volume_h24_usd,
+        min_txns_h1=min_txns_h1,
+    )
 
 
 @app.command("new-runners")
