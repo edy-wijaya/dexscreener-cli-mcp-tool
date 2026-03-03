@@ -147,6 +147,12 @@ def _pct_text(value: float) -> Text:
     return Text(fmt_pct(value), style="white")
 
 
+def _pct_or_na(value: float, *, txns_h1: int) -> Text:
+    if txns_h1 <= 0:
+        return Text("N/A", style="dim")
+    return _pct_text(value)
+
+
 def _ai_rows_json(rows: list[dict[str, object]]) -> str:
     return json.dumps(rows, indent=2, ensure_ascii=True)
 
@@ -549,7 +555,7 @@ def _render_ai_board(
             str(i),
             symbol,
             f"${price:,.8f}" if price < 0.01 else f"${price:,.6f}",
-            _pct_text(h1),
+            _pct_or_na(h1, txns_h1=tx1h),
             _pct_text(h24),
             Text(fmt_usd(vol24), style="bright_cyan" if vol24 >= 100_000 else "cyan"),
             str(tx1h),
@@ -628,7 +634,7 @@ def _render_new_launches_board(
             symbol,
             Text(f"{age_hours:.1f}h", style=age_style),
             Text(f"${price:,.8f}" if price < 0.01 else f"${price:,.6f}", style="white"),
-            _pct_text(_as_float(row.get("priceChangeH1"))),
+            _pct_or_na(_as_float(row.get("priceChangeH1")), txns_h1=tx1h),
             _pct_text(_as_float(row.get("priceChangeH24"))),
             Text(fmt_usd(vol24), style="bright_cyan" if vol24 >= 100_000 else "cyan"),
             Text(str(tx1h), style="bright_white" if tx1h >= 100 else "white"),
