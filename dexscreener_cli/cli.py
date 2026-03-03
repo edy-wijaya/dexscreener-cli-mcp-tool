@@ -27,6 +27,8 @@ from .ui import (
     render_distribution_panel,
     render_flow_panel,
     render_hot_table,
+    render_new_runner_spotlight,
+    render_new_runners_table,
     render_pair_detail,
     render_search_table,
 )
@@ -238,6 +240,17 @@ def _render_scan_board(candidates: list[HotTokenCandidate], filters: ScanFilters
     console.print(Columns([render_chain_heat_table(candidates), render_flow_panel(candidates)]))
 
 
+def _new_runner_rank(candidate: HotTokenCandidate) -> tuple[float, float, int, float]:
+    age = candidate.pair.age_hours
+    freshness_bonus = 0.0 if age is None else max(0.0, (24.0 - age) / 24.0) * 8.0
+    return (
+        candidate.score + freshness_bonus,
+        candidate.pair.volume_h1,
+        candidate.pair.txns_h1,
+        candidate.pair.price_change_h1,
+    )
+
+
 @app.command("hot")
 def hot(
     chains: Annotated[str | None, typer.Option(help="Comma-separated chain IDs")] = None,
@@ -264,6 +277,69 @@ def hot(
         typer.echo(json.dumps([_candidate_json(c) for c in candidates], indent=2, ensure_ascii=True))
         return
     _render_scan_board(candidates, filters)
+
+
+@app.command("new-runners")
+def new_runners(
+    chain: Annotated[str, typer.Option(help="Chain ID, defaults to base")] = "base",
+    limit: Annotated[int, typer.Option(help="Number of fresh runners to show")] = 10,
+    max_age_hours: Annotated[float, typer.Option(help="Maximum token age in hours")] = 24.0,
+    min_liquidity_usd: Annotated[float, typer.Option(help="Minimum pair liquidity in USD")] = 20_000.0,
+    min_volume_h24_usd: Annotated[float, typer.Option(help="Minimum 24h volume in USD")] = 50_000.0,
+    min_txns_h1: Annotated[int, typer.Option(help="Minimum 1h transactions")] = 25,
+    min_price_change_h1: Annotated[float, typer.Option(help="Minimum 1h price change percent")] = 0.0,
+    include_unknown_age: Annotated[bool, typer.Option(help="Include tokens with unknown pair age")] = False,
+    as_json: Annotated[bool, typer.Option("--json", help="Output machine-readable JSON")] = False,
+) -> None:
+    """Show best new runners for a chain (optimized for day-trading discovery)."""
+    chain = chain.lower().strip()
+    fetch_limit = min(max(limit * 6, 60), 72)
+    filters = ScanFilters(
+        chains=(chain,),
+        limit=fetch_limit,
+        min_liquidity_usd=min_liquidity_usd,
+        min_volume_h24_usd=min_volume_h24_usd,
+        min_txns_h1=min_txns_h1,
+        min_price_change_h1=min_price_change_h1,
+    )
+
+    candidates = asyncio.run(_scan(filters))
+    fresh: list[HotTokenCandidate] = []
+    for candidate in candidates:
+        age = candidate.pair.age_hours
+        if age is None and not include_unknown_age:
+            continue
+        if age is not None and age > max_age_hours:
+            continue
+        fresh.append(candidate)
+
+    ranked = sorted(fresh, key=_new_runner_rank, reverse=True)[:limit]
+    if as_json:
+        typer.echo(json.dumps([_candidate_json(c) for c in ranked], indent=2, ensure_ascii=True))
+        return
+
+    console.print(build_header())
+    console.print(
+        Columns(
+            [
+                render_new_runner_spotlight(ranked, chain=chain, max_age_hours=max_age_hours, limit=limit),
+                render_flow_panel(ranked),
+            ]
+        )
+    )
+    console.print(
+        render_new_runners_table(
+            ranked,
+            chain=chain,
+            max_age_hours=max_age_hours,
+            limit=limit,
+        )
+    )
+    if len(ranked) < limit:
+        console.print(
+            f"[yellow]Only found {len(ranked)} new runners under {max_age_hours:.0f}h. "
+            "Try lowering min liquidity/volume/txns filters.[/yellow]"
+        )
 
 
 @app.command("watch")
