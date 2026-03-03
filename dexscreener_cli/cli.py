@@ -9,11 +9,13 @@ import typer
 from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
+from rich.table import Table
 
 from .client import DexScreenerClient
 from .config import DEFAULT_CHAINS, ScanFilters
 from .models import HotTokenCandidate
 from .scanner import HotScanner
+from .state import ScanPreset, StateStore
 from .ui import (
     build_header,
     render_distribution_panel,
@@ -26,6 +28,8 @@ app = typer.Typer(
     add_completion=False,
     help="Visual Dexscreener scanner CLI. Spot hot runners and inspect pair flow from the terminal.",
 )
+preset_app = typer.Typer(help="Save and reuse named scan filter presets.")
+app.add_typer(preset_app, name="preset")
 console = Console()
 
 
@@ -60,6 +64,42 @@ def _candidate_json(c: HotTokenCandidate) -> dict[str, object]:
     }
 
 
+def _resolved_filters(
+    *,
+    chains: str | None,
+    limit: int | None,
+    min_liquidity_usd: float | None,
+    min_volume_h24_usd: float | None,
+    min_txns_h1: int | None,
+    min_price_change_h1: float | None,
+    preset_name: str | None,
+) -> ScanFilters:
+    default_filters = ScanFilters(chains=DEFAULT_CHAINS)
+    resolved = default_filters
+
+    if preset_name:
+        store = StateStore()
+        preset = store.get_preset(preset_name)
+        if not preset:
+            console.print(f"[red]Preset '{preset_name}' not found.[/red]")
+            raise typer.Exit(code=1)
+        resolved = preset.to_filters()
+
+    if chains:
+        resolved.chains = _parse_chains(chains)
+    if limit is not None:
+        resolved.limit = limit
+    if min_liquidity_usd is not None:
+        resolved.min_liquidity_usd = min_liquidity_usd
+    if min_volume_h24_usd is not None:
+        resolved.min_volume_h24_usd = min_volume_h24_usd
+    if min_txns_h1 is not None:
+        resolved.min_txns_h1 = min_txns_h1
+    if min_price_change_h1 is not None:
+        resolved.min_price_change_h1 = min_price_change_h1
+    return resolved
+
+
 async def _scan(filters: ScanFilters) -> list[HotTokenCandidate]:
     async with DexScreenerClient() as client:
         scanner = HotScanner(client)
@@ -68,22 +108,24 @@ async def _scan(filters: ScanFilters) -> list[HotTokenCandidate]:
 
 @app.command("hot")
 def hot(
-    chains: Annotated[str, typer.Option(help="Comma-separated chain IDs")] = ",".join(DEFAULT_CHAINS),
-    limit: Annotated[int, typer.Option(help="Number of rows")] = 20,
-    min_liquidity_usd: Annotated[float, typer.Option(help="Minimum pair liquidity in USD")] = 35_000.0,
-    min_volume_h24_usd: Annotated[float, typer.Option(help="Minimum 24h volume in USD")] = 90_000.0,
-    min_txns_h1: Annotated[int, typer.Option(help="Minimum 1h transactions")] = 80,
-    min_price_change_h1: Annotated[float, typer.Option(help="Minimum 1h price change percent")] = 0.0,
+    chains: Annotated[str | None, typer.Option(help="Comma-separated chain IDs")] = None,
+    limit: Annotated[int | None, typer.Option(help="Number of rows")] = None,
+    min_liquidity_usd: Annotated[float | None, typer.Option(help="Minimum pair liquidity in USD")] = None,
+    min_volume_h24_usd: Annotated[float | None, typer.Option(help="Minimum 24h volume in USD")] = None,
+    min_txns_h1: Annotated[int | None, typer.Option(help="Minimum 1h transactions")] = None,
+    min_price_change_h1: Annotated[float | None, typer.Option(help="Minimum 1h price change percent")] = None,
+    preset: Annotated[str | None, typer.Option(help="Named preset to load before overrides")] = None,
     as_json: Annotated[bool, typer.Option("--json", help="Output machine-readable JSON")] = False,
 ) -> None:
     """One-shot hot runner scan."""
-    filters = ScanFilters(
-        chains=_parse_chains(chains),
+    filters = _resolved_filters(
+        chains=chains,
         limit=limit,
         min_liquidity_usd=min_liquidity_usd,
         min_volume_h24_usd=min_volume_h24_usd,
         min_txns_h1=min_txns_h1,
         min_price_change_h1=min_price_change_h1,
+        preset_name=preset,
     )
     candidates = asyncio.run(_scan(filters))
     if as_json:
@@ -105,22 +147,24 @@ def hot(
 
 @app.command("watch")
 def watch(
-    chains: Annotated[str, typer.Option(help="Comma-separated chain IDs")] = ",".join(DEFAULT_CHAINS),
-    limit: Annotated[int, typer.Option(help="Number of rows")] = 16,
+    chains: Annotated[str | None, typer.Option(help="Comma-separated chain IDs")] = None,
+    limit: Annotated[int | None, typer.Option(help="Number of rows")] = None,
     interval: Annotated[float, typer.Option(help="Refresh interval seconds")] = 7.0,
-    min_liquidity_usd: Annotated[float, typer.Option(help="Minimum pair liquidity in USD")] = 35_000.0,
-    min_volume_h24_usd: Annotated[float, typer.Option(help="Minimum 24h volume in USD")] = 90_000.0,
-    min_txns_h1: Annotated[int, typer.Option(help="Minimum 1h transactions")] = 80,
-    min_price_change_h1: Annotated[float, typer.Option(help="Minimum 1h price change percent")] = 0.0,
+    min_liquidity_usd: Annotated[float | None, typer.Option(help="Minimum pair liquidity in USD")] = None,
+    min_volume_h24_usd: Annotated[float | None, typer.Option(help="Minimum 24h volume in USD")] = None,
+    min_txns_h1: Annotated[int | None, typer.Option(help="Minimum 1h transactions")] = None,
+    min_price_change_h1: Annotated[float | None, typer.Option(help="Minimum 1h price change percent")] = None,
+    preset: Annotated[str | None, typer.Option(help="Named preset to load before overrides")] = None,
 ) -> None:
     """Live visual hot runner board for terminal workflows."""
-    filters = ScanFilters(
-        chains=_parse_chains(chains),
-        limit=limit,
+    filters = _resolved_filters(
+        chains=chains,
+        limit=limit if limit is not None else 16,
         min_liquidity_usd=min_liquidity_usd,
         min_volume_h24_usd=min_volume_h24_usd,
         min_txns_h1=min_txns_h1,
         min_price_change_h1=min_price_change_h1,
+        preset_name=preset,
     )
 
     async def loop() -> None:
@@ -253,6 +297,84 @@ def why() -> None:
         },
     }
     console.print(json.dumps(payload, indent=2))
+
+
+@preset_app.command("save")
+def preset_save(
+    name: Annotated[str, typer.Argument(help="Preset name")],
+    chains: Annotated[str | None, typer.Option(help="Comma-separated chain IDs")] = None,
+    limit: Annotated[int | None, typer.Option(help="Number of rows")] = None,
+    min_liquidity_usd: Annotated[float | None, typer.Option(help="Minimum pair liquidity in USD")] = None,
+    min_volume_h24_usd: Annotated[float | None, typer.Option(help="Minimum 24h volume in USD")] = None,
+    min_txns_h1: Annotated[int | None, typer.Option(help="Minimum 1h transactions")] = None,
+    min_price_change_h1: Annotated[float | None, typer.Option(help="Minimum 1h price change percent")] = None,
+    from_preset: Annotated[str | None, typer.Option(help="Use this preset as a base")] = None,
+) -> None:
+    """Save a named preset from filters."""
+    filters = _resolved_filters(
+        chains=chains,
+        limit=limit,
+        min_liquidity_usd=min_liquidity_usd,
+        min_volume_h24_usd=min_volume_h24_usd,
+        min_txns_h1=min_txns_h1,
+        min_price_change_h1=min_price_change_h1,
+        preset_name=from_preset,
+    )
+    store = StateStore()
+    preset = ScanPreset.from_filters(name=name, filters=filters)
+    store.save_preset(preset)
+    console.print(f"[green]Saved preset '{name}'.[/green]")
+
+
+@preset_app.command("list")
+def preset_list() -> None:
+    """List saved presets."""
+    store = StateStore()
+    presets = store.list_presets()
+    if not presets:
+        console.print("[yellow]No presets found.[/yellow]")
+        return
+    table = Table(title="Presets")
+    table.add_column("Name", style="bold cyan")
+    table.add_column("Chains")
+    table.add_column("Limit", justify="right")
+    table.add_column("MinLiq", justify="right")
+    table.add_column("MinVol24", justify="right")
+    table.add_column("MinTx1h", justify="right")
+    table.add_column("Updated", style="dim")
+    for p in presets:
+        table.add_row(
+            p.name,
+            ",".join(p.chains),
+            str(p.limit),
+            f"{p.min_liquidity_usd:.0f}",
+            f"{p.min_volume_h24_usd:.0f}",
+            str(p.min_txns_h1),
+            p.updated_at,
+        )
+    console.print(table)
+
+
+@preset_app.command("show")
+def preset_show(name: Annotated[str, typer.Argument(help="Preset name")]) -> None:
+    """Show a preset as JSON."""
+    store = StateStore()
+    preset = store.get_preset(name)
+    if not preset:
+        console.print(f"[red]Preset '{name}' not found.[/red]")
+        raise typer.Exit(code=1)
+    typer.echo(json.dumps(preset.to_dict(), indent=2, ensure_ascii=True))
+
+
+@preset_app.command("delete")
+def preset_delete(name: Annotated[str, typer.Argument(help="Preset name")]) -> None:
+    """Delete a preset."""
+    store = StateStore()
+    deleted = store.delete_preset(name)
+    if not deleted:
+        console.print(f"[red]Preset '{name}' not found.[/red]")
+        raise typer.Exit(code=1)
+    console.print(f"[green]Deleted preset '{name}'.[/green]")
 
 
 if __name__ == "__main__":
