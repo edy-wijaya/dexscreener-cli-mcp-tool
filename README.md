@@ -45,6 +45,7 @@ This tool shows **proxy concentration signals** (liquidity-to-market-cap, volume
 3. [UI/UX Spec](docs/UI_UX_SPEC.md)
 4. [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
 5. [Daemon Deployment](docs/DAEMON_DEPLOYMENT.md)
+6. [Desk Alpha Opinions](docs/DESK_ALPHA_OPINIONS.md)
 
 ## Install
 ```bash
@@ -70,9 +71,9 @@ Top new coins by 24h volume in the last 7 days:
 ds top-new --chain base --days 7 --limit 10
 ```
 
-Stricter new-coin leaderboard (more tradable):
+Stricter new-coin leaderboard (more tradable and activity-aware):
 ```bash
-ds top-new --chain base --days 7 --limit 10 --min-liquidity-usd 10000 --min-volume-h24-usd 1000 --min-txns-h1 1
+ds top-new --chain base --days 7 --limit 10 --min-liquidity-usd 25000 --min-volume-h24-usd 1000 --min-txns-h24 50
 ```
 
 Stricter tradable AI leaderboard:
@@ -92,11 +93,27 @@ ds new-runners \
   --limit 10 \
   --max-age-hours 24 \
   --sort-by readiness \
+  --max-vol-liq-ratio 60 \
   --min-breakout-readiness 55 \
   --min-relative-strength -10 \
   --decay-filter \
   --min-half-life-minutes 6 \
   --min-decay-ratio 0.35
+```
+
+Realtime alpha-drop board (Base + Solana):
+```bash
+ds alpha-drops --chains base,solana --limit 10
+```
+
+Realtime alpha-drop watch with notifications:
+```bash
+ds alpha-drops-watch \
+  --chains base,solana \
+  --interval 6 \
+  --alert-cooldown-seconds 300 \
+  --alert-max-per-hour 8 \
+  --discord-webhook-url https://discord.com/api/webhooks/...
 ```
 
 Live new-runner rotation board (cards + rank movers):
@@ -226,4 +243,5 @@ For spotting new runners with manageable noise:
 2. `--min-liquidity-usd 35000`
 3. `--min-volume-h24-usd 90000`
 4. `--min-txns-h1 80`
-5. `--limit 20`
+5. `--max-vol-liq-ratio 60`
+6. `--limit 20`

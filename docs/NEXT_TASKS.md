@@ -49,3 +49,30 @@ Status key: `pending` | `in_progress` | `done`
 - Acceptance:
   - Commands run successfully in current environment.
   - Output includes new analytics columns/panels.
+
+## 6) Runner Noise Control
+- Status: `done`
+- Scope:
+  - Raise default minimum liquidity for runner-oriented commands.
+  - Add anti-thin filter (`max volume/liquidity ratio`).
+- Acceptance:
+  - `new-runners`, `new-runners-watch`, `alpha-drops`, and `alpha-drops-watch` expose the anti-thin option.
+  - Near-zero-liquidity/highly thin candidates are filtered out by default.
+
+## 7) Realtime Alpha Alert Guardrails
+- Status: `done`
+- Scope:
+  - Add hard cap for alert send frequency in watch mode.
+  - Keep cooldown-based alerting and risk gates.
+- Acceptance:
+  - `alpha-drops-watch` supports max alerts/hour.
+  - Status panel explains when alert cap is hit.
+
+## 8) Discovery and Top-New Reliability
+- Status: `done`
+- Scope:
+  - Add search-seed discovery augmentation to improve multi-chain coverage.
+  - Add 24h transaction filter/column for top-new scans.
+- Acceptance:
+  - Scanner ingests bounded search-based seeds.
+  - `top-new` can filter by 24h txns and explains 1h `N/A` via recent inactivity.
