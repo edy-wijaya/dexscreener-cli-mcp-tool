@@ -60,6 +60,11 @@ One-shot scan:
 ds hot --chains solana,base --limit 20
 ```
 
+Best 10 new runners of the day on Base:
+```bash
+ds new-runners --chain base --limit 10 --max-age-hours 24
+```
+
 Live watch board:
 ```bash
 ds watch --chains solana,base,ethereum --interval 7
