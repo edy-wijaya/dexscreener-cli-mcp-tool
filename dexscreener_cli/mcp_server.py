@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from .alerts import send_alerts
+from .alerts import send_test_alert
 from .client import DexScreenerClient
 from .config import DEFAULT_CHAINS, ScanFilters
 from .models import HotTokenCandidate
 from .scanner import HotScanner
 from .scoring import build_distribution_heuristics
 from .state import ScanPreset, StateStore
+from .task_runner import execute_task_once, select_due_tasks
 
 mcp = FastMCP("dexscreener-cli-mcp-tool")
 
@@ -52,31 +52,62 @@ def _parse_chains(raw: str | None) -> tuple[str, ...]:
     return values or DEFAULT_CHAINS
 
 
-def _apply_task_overrides(filters: ScanFilters, payload: dict[str, Any] | None) -> ScanFilters:
-    if not payload:
-        return filters
-    if payload.get("chains"):
-        filters.chains = tuple(payload["chains"])
-    if payload.get("limit") is not None:
-        filters.limit = int(payload["limit"])
-    if payload.get("min_liquidity_usd") is not None:
-        filters.min_liquidity_usd = float(payload["min_liquidity_usd"])
-    if payload.get("min_volume_h24_usd") is not None:
-        filters.min_volume_h24_usd = float(payload["min_volume_h24_usd"])
-    if payload.get("min_txns_h1") is not None:
-        filters.min_txns_h1 = int(payload["min_txns_h1"])
-    if payload.get("min_price_change_h1") is not None:
-        filters.min_price_change_h1 = float(payload["min_price_change_h1"])
-    return filters
+def _as_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if str(v).strip()]
+    if isinstance(value, str):
+        return [v.strip() for v in value.split(",") if v.strip()]
+    return [str(value)]
 
 
-def _parse_iso(ts: str | None) -> datetime | None:
-    if not ts:
-        return None
-    try:
-        return datetime.fromisoformat(ts)
-    except ValueError:
-        return None
+def _build_alert_config(
+    *,
+    webhook_url: str | None = None,
+    discord_webhook_url: str | None = None,
+    telegram_bot_token: str | None = None,
+    telegram_chat_id: str | None = None,
+    alert_min_score: float | None = None,
+    alert_cooldown_seconds: int | None = None,
+    alert_template: str | None = None,
+    alert_top_n: int | None = None,
+    alert_min_liquidity_usd: float | None = None,
+    alert_max_vol_liq_ratio: float | None = None,
+    alert_blocked_terms: str | list[str] | None = None,
+    alert_blocked_chains: str | list[str] | None = None,
+    webhook_extra: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    alerts: dict[str, Any] = {}
+    if webhook_url is not None:
+        alerts["webhook_url"] = webhook_url
+    if discord_webhook_url is not None:
+        alerts["discord_webhook_url"] = discord_webhook_url
+    if telegram_bot_token is not None:
+        alerts["telegram_bot_token"] = telegram_bot_token
+    if telegram_chat_id is not None:
+        alerts["telegram_chat_id"] = telegram_chat_id
+    if alert_min_score is not None:
+        alerts["min_score"] = alert_min_score
+    if alert_cooldown_seconds is not None:
+        alerts["cooldown_seconds"] = alert_cooldown_seconds
+    if alert_template is not None:
+        alerts["template"] = alert_template
+    if alert_top_n is not None:
+        alerts["top_n"] = alert_top_n
+    if alert_min_liquidity_usd is not None:
+        alerts["min_liquidity_usd"] = alert_min_liquidity_usd
+    if alert_max_vol_liq_ratio is not None:
+        alerts["max_vol_liq_ratio"] = alert_max_vol_liq_ratio
+    terms = _as_list(alert_blocked_terms)
+    if terms:
+        alerts["blocked_terms"] = terms
+    chains = [c.lower() for c in _as_list(alert_blocked_chains)]
+    if chains:
+        alerts["blocked_chains"] = chains
+    if webhook_extra:
+        alerts["webhook_extra"] = webhook_extra
+    return alerts or None
 
 
 @mcp.tool()
@@ -152,6 +183,13 @@ async def create_task(
     telegram_chat_id: str | None = None,
     alert_min_score: float | None = None,
     alert_cooldown_seconds: int | None = None,
+    alert_template: str | None = None,
+    alert_top_n: int | None = None,
+    alert_min_liquidity_usd: float | None = None,
+    alert_max_vol_liq_ratio: float | None = None,
+    alert_blocked_terms: str | list[str] | None = None,
+    alert_blocked_chains: str | list[str] | None = None,
+    webhook_extra: dict[str, Any] | None = None,
     notes: str = "",
 ) -> dict[str, Any]:
     """Create a new scan task."""
@@ -169,26 +207,28 @@ async def create_task(
         overrides["min_txns_h1"] = min_txns_h1
     if min_price_change_h1 is not None:
         overrides["min_price_change_h1"] = min_price_change_h1
-    alerts: dict[str, Any] = {}
-    if webhook_url is not None:
-        alerts["webhook_url"] = webhook_url
-    if discord_webhook_url is not None:
-        alerts["discord_webhook_url"] = discord_webhook_url
-    if telegram_bot_token is not None:
-        alerts["telegram_bot_token"] = telegram_bot_token
-    if telegram_chat_id is not None:
-        alerts["telegram_chat_id"] = telegram_chat_id
-    if alert_min_score is not None:
-        alerts["min_score"] = alert_min_score
-    if alert_cooldown_seconds is not None:
-        alerts["cooldown_seconds"] = alert_cooldown_seconds
+    alerts = _build_alert_config(
+        webhook_url=webhook_url,
+        discord_webhook_url=discord_webhook_url,
+        telegram_bot_token=telegram_bot_token,
+        telegram_chat_id=telegram_chat_id,
+        alert_min_score=alert_min_score,
+        alert_cooldown_seconds=alert_cooldown_seconds,
+        alert_template=alert_template,
+        alert_top_n=alert_top_n,
+        alert_min_liquidity_usd=alert_min_liquidity_usd,
+        alert_max_vol_liq_ratio=alert_max_vol_liq_ratio,
+        alert_blocked_terms=alert_blocked_terms,
+        alert_blocked_chains=alert_blocked_chains,
+        webhook_extra=webhook_extra,
+    )
 
     task = store.create_task(
         name=name,
         preset=preset,
         filters=overrides or None,
         interval_seconds=interval_seconds,
-        alerts=alerts or None,
+        alerts=alerts,
         notes=notes,
     )
     return task.to_dict()
@@ -212,36 +252,28 @@ async def run_task_scan(task: str, fire_alerts: bool = True) -> dict[str, Any]:
     if not row:
         return {"error": f"Task '{task}' not found"}
 
-    filters = ScanFilters(chains=DEFAULT_CHAINS)
-    if row.preset:
-        preset = store.get_preset(row.preset)
-        if not preset:
-            return {"error": f"Task preset '{row.preset}' not found"}
-        filters = preset.to_filters()
-    filters = _apply_task_overrides(filters, row.filters)
-
     async with DexScreenerClient() as client:
         scanner = HotScanner(client)
-        rows = await scanner.scan(filters)
-    store.touch_task_run(row.id)
-    alert_result: dict[str, Any] = {"sent": False, "reason": "disabled", "channels": {}}
-    if fire_alerts:
-        refreshed = store.get_task(row.id) or row
-        alert_result = await send_alerts(refreshed, rows)
-        if alert_result.get("sent"):
-            store.touch_task_alert(row.id)
+        result = await execute_task_once(
+            store=store,
+            scanner=scanner,
+            task=row,
+            mode="mcp-manual",
+            fire_alerts=fire_alerts,
+            mark_running=False,
+            block_on_error=False,
+        )
+    candidates = result.get("candidates", [])
+    if not isinstance(candidates, list):
+        candidates = []
     return {
-        "task": row.to_dict(),
-        "filters": {
-            "chains": list(filters.chains),
-            "limit": filters.limit,
-            "min_liquidity_usd": filters.min_liquidity_usd,
-            "min_volume_h24_usd": filters.min_volume_h24_usd,
-            "min_txns_h1": filters.min_txns_h1,
-            "min_price_change_h1": filters.min_price_change_h1,
-        },
-        "results": [_serialize_candidate(c) for c in rows],
-        "alert": alert_result,
+        "ok": result.get("ok", False),
+        "error": result.get("error"),
+        "task": result.get("task", row.to_dict()),
+        "filters": result.get("filters"),
+        "results": [_serialize_candidate(c) for c in candidates if isinstance(c, HotTokenCandidate)],
+        "alert": result.get("alert"),
+        "run": result.get("run"),
     }
 
 
@@ -252,42 +284,94 @@ async def run_due_tasks(
 ) -> dict[str, Any]:
     """Run one scheduler cycle for all due non-blocked tasks."""
     store = StateStore()
-    tasks = [t for t in store.list_tasks() if t.status not in {"blocked", "done"}]
-    due: list[Any] = []
-    now = datetime.now(UTC)
-    for task in tasks:
-        interval = task.interval_seconds or default_interval_seconds
-        last_run = _parse_iso(task.last_run_at)
-        if (last_run is None) or ((now - last_run).total_seconds() >= interval):
-            due.append(task)
+    due = select_due_tasks(
+        store=store,
+        task_name_or_id=None,
+        all_tasks=True,
+        default_interval_seconds=default_interval_seconds,
+    )
 
     cycle_results: list[dict[str, Any]] = []
     async with DexScreenerClient() as client:
         scanner = HotScanner(client)
         for task in due:
-            filters = ScanFilters(chains=DEFAULT_CHAINS)
-            if task.preset:
-                preset = store.get_preset(task.preset)
-                if preset:
-                    filters = preset.to_filters()
-            filters = _apply_task_overrides(filters, task.filters)
-            rows = await scanner.scan(filters)
-            store.touch_task_run(task.id)
-            alert_result: dict[str, Any] = {"sent": False, "reason": "disabled", "channels": {}}
-            if fire_alerts:
-                refreshed = store.get_task(task.id) or task
-                alert_result = await send_alerts(refreshed, rows)
-                if alert_result.get("sent"):
-                    store.touch_task_alert(task.id)
+            result = await execute_task_once(
+                store=store,
+                scanner=scanner,
+                task=task,
+                mode="mcp-daemon",
+                fire_alerts=fire_alerts,
+                mark_running=True,
+                block_on_error=True,
+            )
+            candidates = result.get("candidates", [])
+            if not isinstance(candidates, list):
+                candidates = []
             cycle_results.append(
                 {
-                    "task": task.to_dict(),
-                    "resultCount": len(rows),
-                    "top": _serialize_candidate(rows[0]) if rows else None,
-                    "alert": alert_result,
+                    "ok": result.get("ok", False),
+                    "error": result.get("error"),
+                    "task": result.get("task", task.to_dict()),
+                    "resultCount": len(candidates),
+                    "top": _serialize_candidate(candidates[0]) if candidates and isinstance(candidates[0], HotTokenCandidate) else None,
+                    "alert": result.get("alert"),
+                    "run": result.get("run"),
                 }
             )
     return {"dueTasks": len(due), "runs": cycle_results}
+
+
+@mcp.tool()
+async def test_task_alert(task: str, with_scan: bool = False) -> dict[str, Any]:
+    """Send a test alert through task-configured channels."""
+    store = StateStore()
+    row = store.get_task(task)
+    if not row:
+        return {"error": f"Task '{task}' not found"}
+    candidates: list[HotTokenCandidate] = []
+    if with_scan:
+        async with DexScreenerClient() as client:
+            scanner = HotScanner(client)
+            result = await execute_task_once(
+                store=store,
+                scanner=scanner,
+                task=row,
+                mode="mcp-test-scan",
+                fire_alerts=False,
+                mark_running=False,
+                block_on_error=False,
+            )
+            raw_candidates = result.get("candidates", [])
+            if isinstance(raw_candidates, list):
+                candidates = [c for c in raw_candidates if isinstance(c, HotTokenCandidate)]
+    alert_result = await send_test_alert(row, candidates=candidates)
+    if alert_result.get("sent"):
+        store.touch_task_alert(row.id)
+    return {"task": row.to_dict(), "alert": alert_result}
+
+
+@mcp.tool()
+async def list_task_runs(task: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    """List task run history."""
+    store = StateStore()
+    return [r.to_dict() for r in store.list_runs(task=task, limit=limit)]
+
+
+@mcp.tool()
+async def export_state_bundle() -> dict[str, Any]:
+    """Export presets/tasks/runs into one JSON-compatible object."""
+    store = StateStore()
+    return store.export_bundle()
+
+
+@mcp.tool()
+async def import_state_bundle(bundle: dict[str, Any], mode: str = "merge") -> dict[str, Any]:
+    """Import presets/tasks/runs from a bundle object."""
+    if mode not in {"merge", "replace"}:
+        return {"error": "Invalid mode. Use merge or replace."}
+    store = StateStore()
+    counts = store.import_bundle(bundle, mode=mode)  # type: ignore[arg-type]
+    return {"ok": True, "mode": mode, "counts": counts}
 
 
 @mcp.tool()
