@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from rich.columns import Columns
 from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
@@ -18,7 +19,9 @@ from .scanner import HotScanner
 from .state import ScanPreset, StateStore
 from .ui import (
     build_header,
+    render_chain_heat_table,
     render_distribution_panel,
+    render_flow_panel,
     render_hot_table,
     render_pair_detail,
     render_search_table,
@@ -181,6 +184,7 @@ def hot(
             min_txns_h1=filters.min_txns_h1,
         )
     )
+    console.print(Columns([render_chain_heat_table(candidates), render_flow_panel(candidates)]))
 
 
 @app.command("watch")
@@ -221,6 +225,7 @@ def watch(
                             min_volume_h24_usd=filters.min_volume_h24_usd,
                             min_txns_h1=filters.min_txns_h1,
                         ),
+                        Columns([render_chain_heat_table(candidates), render_flow_panel(candidates)]),
                         Panel(
                             f"Refreshing every {interval:.1f}s. Press Ctrl+C to exit.",
                             border_style="dim",
@@ -557,6 +562,7 @@ def task_run(
             min_txns_h1=filters.min_txns_h1,
         )
     )
+    console.print(Columns([render_chain_heat_table(candidates), render_flow_panel(candidates)]))
 
 
 if __name__ == "__main__":
