@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from collections import defaultdict
 
 from rich import box
 from rich.panel import Panel
@@ -171,3 +172,65 @@ def render_distribution_panel(candidate: HotTokenCandidate) -> Panel:
         f"- status: {heuristics['status']}"
     )
     return Panel(txt, title="[bold bright_magenta]Distribution Proxy[/bold bright_magenta]", border_style="magenta")
+
+
+def render_chain_heat_table(candidates: list[HotTokenCandidate]) -> Table:
+    table = Table(title="Chain Heat", box=box.SIMPLE, expand=True)
+    table.add_column("Chain", style="bold cyan")
+    table.add_column("Tokens", justify="right")
+    table.add_column("Avg 1h", justify="right")
+    table.add_column("24h Vol", justify="right")
+    table.add_column("1h Txns", justify="right")
+
+    agg: dict[str, dict[str, float]] = defaultdict(lambda: {"count": 0, "h1": 0, "vol": 0, "txns": 0})
+    for c in candidates:
+        bucket = agg[c.pair.chain_id]
+        bucket["count"] += 1
+        bucket["h1"] += c.pair.price_change_h1
+        bucket["vol"] += c.pair.volume_h24
+        bucket["txns"] += c.pair.txns_h1
+
+    for chain, data in sorted(agg.items(), key=lambda kv: kv[1]["vol"], reverse=True):
+        count = int(data["count"])
+        avg_h1 = (data["h1"] / count) if count else 0.0
+        table.add_row(
+            chain,
+            str(count),
+            fmt_pct(avg_h1),
+            fmt_usd(data["vol"]),
+            str(int(data["txns"])),
+        )
+    if not agg:
+        table.add_row("-", "0", "0%", "$0", "0")
+    return table
+
+
+def render_flow_panel(candidates: list[HotTokenCandidate]) -> Panel:
+    if not candidates:
+        return Panel("No candidates in current filter set.", title="Flow Summary", border_style="yellow")
+
+    total_vol = sum(c.pair.volume_h24 for c in candidates)
+    total_liq = sum(c.pair.liquidity_usd for c in candidates)
+    avg_h1 = sum(c.pair.price_change_h1 for c in candidates) / max(len(candidates), 1)
+    avg_imbalance = sum(
+        (c.pair.buys_h1 - c.pair.sells_h1) / max(c.pair.txns_h1, 1)
+        for c in candidates
+    ) / max(len(candidates), 1)
+
+    risk_flags: list[str] = []
+    if total_liq > 0 and (total_vol / total_liq) > 6:
+        risk_flags.append("speculative-flow")
+    if avg_imbalance < -0.25:
+        risk_flags.append("sell-pressure")
+    if avg_h1 > 20:
+        risk_flags.append("high-volatility")
+    if not risk_flags:
+        risk_flags.append("balanced")
+
+    text = Text()
+    text.append(f"24h volume: {fmt_usd(total_vol)}\n")
+    text.append(f"Liquidity sum: {fmt_usd(total_liq)}\n")
+    text.append(f"Average 1h move: {fmt_pct(avg_h1)}\n")
+    text.append(f"Average buy/sell imbalance: {avg_imbalance:+.2f}\n")
+    text.append(f"Flags: {', '.join(risk_flags)}", style="bold magenta")
+    return Panel(text, title="Flow Summary", border_style="bright_blue")
