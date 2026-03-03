@@ -34,6 +34,7 @@ from .ui import (
     render_pair_detail,
     render_search_table,
 )
+from .watch_controls import WatchKeyboardController, copy_to_clipboard
 
 app = typer.Typer(
     add_completion=False,
@@ -412,6 +413,7 @@ def new_runners(
 ) -> None:
     """Show best new runners for a chain (optimized for day-trading discovery)."""
     chain = chain.lower().strip()
+    sort_by = sort_by if sort_by in NEW_RUNNER_SORT_MODES else "score"
     fetch_limit = min(max(limit * 6, 60), 72)
     filters = ScanFilters(
         chains=(chain,),
@@ -466,6 +468,7 @@ def new_runners(
 @app.command("new-runners-watch")
 def new_runners_watch(
     chain: Annotated[str, typer.Option(help="Chain ID, defaults to base")] = "base",
+    watch_chains: Annotated[str | None, typer.Option(help="Comma-separated watch chain list for keyboard switching")] = None,
     limit: Annotated[int, typer.Option(help="Number of fresh runners to show")] = 10,
     max_age_hours: Annotated[float, typer.Option(help="Maximum token age in hours")] = 24.0,
     interval: Annotated[float, typer.Option(help="Refresh interval seconds")] = 7.0,
@@ -485,6 +488,15 @@ def new_runners_watch(
 ) -> None:
     """Full-screen live board for tracking new runner rotations."""
     chain = chain.lower().strip()
+    sort_by = sort_by if sort_by in NEW_RUNNER_SORT_MODES else "score"
+    chain_pool = (chain,)
+    if watch_chains:
+        parsed = _parse_chains(watch_chains)
+        if chain in parsed:
+            chain_pool = parsed
+        else:
+            chain_pool = (chain, *tuple(c for c in parsed if c != chain))
+
     fetch_limit = min(max(limit * 6, 60), 72)
     filters = ScanFilters(
         chains=(chain,),
@@ -499,16 +511,36 @@ def new_runners_watch(
         async with DexScreenerClient() as client:
             scanner = HotScanner(client)
             previous_ranks: dict[tuple[str, str], int] = {}
+            controller = WatchKeyboardController(
+                chains=chain_pool,
+                sort_modes=NEW_RUNNER_SORT_MODES,
+                initial_chain=chain,
+                initial_sort_mode=sort_by,
+            )
             cycle = 0
+            status_message = "keys: 1-9 chain | s sort | j/k select | c copy"
+            ranked: list[HotTokenCandidate] = []
             with Live(console=console, screen=screen, refresh_per_second=6) as live:
                 while True:
                     cycle += 1
+                    action = controller.poll(row_count=len(ranked))
+                    if action:
+                        if action["type"] == "chain":
+                            status_message = f"active chain -> {action['value']}"
+                        elif action["type"] == "sort":
+                            status_message = f"sort mode -> {action['value']}"
+                        elif action["type"] == "select":
+                            status_message = f"selected row -> {int(action['value']) + 1}"
+
+                    active_chain = controller.chain
+                    active_sort_mode = controller.sort_mode
+                    filters.chains = (active_chain,)
                     raw = await scanner.scan(filters)
                     ranked = _select_new_runners(
                         candidates=raw,
                         max_age_hours=max_age_hours,
                         include_unknown_age=include_unknown_age,
-                        sort_by=sort_by,
+                        sort_by=active_sort_mode,
                         min_breakout_readiness=min_breakout_readiness,
                         min_relative_strength=min_relative_strength,
                         decay_filter=decay_filter,
@@ -516,13 +548,33 @@ def new_runners_watch(
                         min_decay_ratio=min_decay_ratio,
                         limit=limit,
                     )
+                    controller.clamp_selection(row_count=len(ranked))
+
+                    if action and action["type"] == "copy":
+                        if ranked:
+                            target = ranked[controller.selected_index]
+                            payload = (
+                                f"{target.pair.base_symbol}\n"
+                                f"token={target.pair.base_address}\n"
+                                f"pair={target.pair.pair_address}\n"
+                                f"url={target.pair.pair_url}"
+                            )
+                            copied = copy_to_clipboard(payload)
+                            status_message = (
+                                f"copied {target.pair.base_symbol} ({target.pair.base_address[:8]}...)"
+                                if copied
+                                else "clipboard copy failed in this environment"
+                            )
+                        else:
+                            status_message = "nothing to copy (no ranked rows)"
+
                     view = Group(
                         build_header(),
                         Columns(
                             [
                                 render_new_runner_spotlight(
                                     ranked,
-                                    chain=chain,
+                                    chain=active_chain,
                                     max_age_hours=max_age_hours,
                                     limit=limit,
                                 ),
@@ -532,9 +584,10 @@ def new_runners_watch(
                         render_top_runner_cards(ranked, pulse=(cycle % 2 == 0)),
                         render_new_runners_table(
                             ranked,
-                            chain=chain,
+                            chain=active_chain,
                             max_age_hours=max_age_hours,
                             limit=limit,
+                            selected_index=controller.selected_index,
                         ),
                         render_rank_movers_table(
                             ranked,
@@ -542,7 +595,12 @@ def new_runners_watch(
                             limit=limit,
                         ),
                         Panel(
-                            f"Refreshing every {interval:.1f}s | cycle={cycle} | Press Ctrl+C to exit",
+                            (
+                                f"refresh={interval:.1f}s | cycle={cycle} | chain={active_chain} "
+                                f"| sort={active_sort_mode} | selected={controller.selected_index + 1 if ranked else '-'}\n"
+                                f"{status_message}\n"
+                                f"hotkeys: 1-9 chain switch ({','.join(chain_pool)}) | s sort | j/k select | c copy | Ctrl+C exit"
+                            ),
                             border_style="dim",
                             box=box.ROUNDED,
                         ),

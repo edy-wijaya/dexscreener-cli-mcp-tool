@@ -249,6 +249,7 @@ def render_new_runners_table(
     chain: str,
     max_age_hours: float,
     limit: int,
+    selected_index: int | None = None,
 ) -> Table:
     table = Table(
         title=(
@@ -283,7 +284,10 @@ def render_new_runners_table(
         p = candidate.pair
         a = candidate.analytics
         signal = ", ".join(candidate.tags[:2]) if candidate.tags else candidate.discovery
-        score = Text(f"{candidate.score:.1f}", style=_score_style(candidate.score))
+        is_selected = selected_index is not None and (i - 1) == selected_index
+        token_style = "bold black on bright_cyan" if is_selected else "bold yellow"
+        score_style = "bold black on bright_cyan" if is_selected else _score_style(candidate.score)
+        score = Text(f"{candidate.score:.1f}", style=score_style)
         age = Text(_age_label(p.age_hours), style="bright_cyan")
         rs_style = "bold bright_green" if a.relative_strength >= 8 else "bold bright_red" if a.relative_strength <= -8 else "white"
         readiness_style = "bold bright_green" if a.breakout_readiness >= 70 else "yellow" if a.breakout_readiness >= 55 else "dim"
@@ -297,7 +301,7 @@ def render_new_runners_table(
             half_life_text = f"{a.momentum_half_life_min:.1f}m"
         table.add_row(
             str(i),
-            _safe_text(p.base_symbol),
+            Text(_safe_text(p.base_symbol), style=token_style),
             score,
             Text(f"{a.breakout_readiness:.0f}", style=readiness_style),
             Text(f"{a.compression_score:.0f}", style="bright_cyan"),
