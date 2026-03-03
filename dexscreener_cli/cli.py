@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -13,12 +12,13 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
 
-from .alerts import send_alerts
+from .alerts import send_test_alert
 from .client import DexScreenerClient
 from .config import DEFAULT_CHAINS, ScanFilters
 from .models import HotTokenCandidate
 from .scanner import HotScanner
 from .state import ScanPreset, ScanTask, StateStore
+from .task_runner import execute_task_once, select_due_tasks, task_filters as runner_task_filters
 from .ui import (
     build_header,
     render_chain_heat_table,
@@ -35,8 +35,10 @@ app = typer.Typer(
 )
 preset_app = typer.Typer(help="Save and reuse named scan filter presets.")
 task_app = typer.Typer(help="Manage repeatable scan tasks.")
+state_app = typer.Typer(help="Import/export local presets, tasks, and run history.")
 app.add_typer(preset_app, name="preset")
 app.add_typer(task_app, name="task")
+app.add_typer(state_app, name="state")
 console = Console()
 
 
@@ -118,29 +120,7 @@ def _task_filters(task_name_or_id: str) -> tuple[ScanFilters, str]:
 
 
 def _filters_for_task(task: ScanTask, store: StateStore) -> ScanFilters:
-    filters = ScanFilters(chains=DEFAULT_CHAINS)
-    if task.preset:
-        preset = store.get_preset(task.preset)
-        if not preset:
-            console.print(f"[red]Task preset '{task.preset}' not found.[/red]")
-            raise typer.Exit(code=1)
-        filters = preset.to_filters()
-
-    if task.filters:
-        payload = task.filters
-        if payload.get("chains"):
-            filters.chains = tuple(payload["chains"])
-        if payload.get("limit") is not None:
-            filters.limit = int(payload["limit"])
-        if payload.get("min_liquidity_usd") is not None:
-            filters.min_liquidity_usd = float(payload["min_liquidity_usd"])
-        if payload.get("min_volume_h24_usd") is not None:
-            filters.min_volume_h24_usd = float(payload["min_volume_h24_usd"])
-        if payload.get("min_txns_h1") is not None:
-            filters.min_txns_h1 = int(payload["min_txns_h1"])
-        if payload.get("min_price_change_h1") is not None:
-            filters.min_price_change_h1 = float(payload["min_price_change_h1"])
-    return filters
+    return runner_task_filters(task, store)
 
 
 def _build_task_overrides(
@@ -177,6 +157,13 @@ def _build_alert_config(
     telegram_chat_id: str | None,
     alert_min_score: float | None,
     alert_cooldown_seconds: int | None,
+    alert_template: str | None = None,
+    alert_top_n: int | None = None,
+    alert_min_liquidity_usd: float | None = None,
+    alert_max_vol_liq_ratio: float | None = None,
+    alert_blocked_terms: str | None = None,
+    alert_blocked_chains: str | None = None,
+    webhook_extra_json: str | None = None,
     from_existing: dict[str, object] | None = None,
 ) -> dict[str, object] | None:
     alerts: dict[str, object] = dict(from_existing or {})
@@ -192,16 +179,24 @@ def _build_alert_config(
         alerts["min_score"] = alert_min_score
     if alert_cooldown_seconds is not None:
         alerts["cooldown_seconds"] = alert_cooldown_seconds
+    if alert_template is not None:
+        alerts["template"] = alert_template
+    if alert_top_n is not None:
+        alerts["top_n"] = alert_top_n
+    if alert_min_liquidity_usd is not None:
+        alerts["min_liquidity_usd"] = alert_min_liquidity_usd
+    if alert_max_vol_liq_ratio is not None:
+        alerts["max_vol_liq_ratio"] = alert_max_vol_liq_ratio
+    if alert_blocked_terms is not None:
+        alerts["blocked_terms"] = [t.strip() for t in alert_blocked_terms.split(",") if t.strip()]
+    if alert_blocked_chains is not None:
+        alerts["blocked_chains"] = [c.strip().lower() for c in alert_blocked_chains.split(",") if c.strip()]
+    if webhook_extra_json is not None:
+        parsed = json.loads(webhook_extra_json) if webhook_extra_json.strip() else {}
+        if not isinstance(parsed, dict):
+            raise ValueError("--webhook-extra-json must be a JSON object")
+        alerts["webhook_extra"] = parsed
     return alerts or None
-
-
-def _parse_iso(ts: str | None) -> datetime | None:
-    if not ts:
-        return None
-    try:
-        return datetime.fromisoformat(ts)
-    except ValueError:
-        return None
 
 
 async def _scan(filters: ScanFilters) -> list[HotTokenCandidate]:
@@ -503,6 +498,13 @@ def task_create(
     telegram_chat_id: Annotated[str | None, typer.Option(help="Telegram chat id")] = None,
     alert_min_score: Annotated[float | None, typer.Option(help="Alert threshold on top score")] = None,
     alert_cooldown_seconds: Annotated[int | None, typer.Option(help="Alert cooldown seconds")] = None,
+    alert_template: Annotated[str | None, typer.Option(help="Alert text template")] = None,
+    alert_top_n: Annotated[int | None, typer.Option(help="How many top candidates in message")] = None,
+    alert_min_liquidity_usd: Annotated[float | None, typer.Option(help="Alert gate: minimum liquidity")] = None,
+    alert_max_vol_liq_ratio: Annotated[float | None, typer.Option(help="Alert gate: maximum volume/liquidity ratio")] = None,
+    alert_blocked_terms: Annotated[str | None, typer.Option(help="Alert gate: blocked token terms (comma-separated)")] = None,
+    alert_blocked_chains: Annotated[str | None, typer.Option(help="Alert gate: blocked chains (comma-separated)")] = None,
+    webhook_extra_json: Annotated[str | None, typer.Option(help="Extra webhook JSON object")] = None,
     notes: Annotated[str, typer.Option(help="Task notes")] = "",
 ) -> None:
     """Create a new scan task."""
@@ -519,14 +521,25 @@ def task_create(
         min_txns_h1=min_txns_h1,
         min_price_change_h1=min_price_change_h1,
     )
-    alerts = _build_alert_config(
-        webhook_url=webhook_url,
-        discord_webhook_url=discord_webhook_url,
-        telegram_bot_token=telegram_bot_token,
-        telegram_chat_id=telegram_chat_id,
-        alert_min_score=alert_min_score,
-        alert_cooldown_seconds=alert_cooldown_seconds,
-    )
+    try:
+        alerts = _build_alert_config(
+            webhook_url=webhook_url,
+            discord_webhook_url=discord_webhook_url,
+            telegram_bot_token=telegram_bot_token,
+            telegram_chat_id=telegram_chat_id,
+            alert_min_score=alert_min_score,
+            alert_cooldown_seconds=alert_cooldown_seconds,
+            alert_template=alert_template,
+            alert_top_n=alert_top_n,
+            alert_min_liquidity_usd=alert_min_liquidity_usd,
+            alert_max_vol_liq_ratio=alert_max_vol_liq_ratio,
+            alert_blocked_terms=alert_blocked_terms,
+            alert_blocked_chains=alert_blocked_chains,
+            webhook_extra_json=webhook_extra_json,
+        )
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
 
     try:
         task = store.create_task(
@@ -641,6 +654,13 @@ def task_configure(
     telegram_chat_id: Annotated[str | None, typer.Option(help="Telegram chat id")] = None,
     alert_min_score: Annotated[float | None, typer.Option(help="Alert threshold on top score")] = None,
     alert_cooldown_seconds: Annotated[int | None, typer.Option(help="Alert cooldown seconds")] = None,
+    alert_template: Annotated[str | None, typer.Option(help="Alert text template")] = None,
+    alert_top_n: Annotated[int | None, typer.Option(help="How many top candidates in message")] = None,
+    alert_min_liquidity_usd: Annotated[float | None, typer.Option(help="Alert gate: minimum liquidity")] = None,
+    alert_max_vol_liq_ratio: Annotated[float | None, typer.Option(help="Alert gate: maximum volume/liquidity ratio")] = None,
+    alert_blocked_terms: Annotated[str | None, typer.Option(help="Alert gate: blocked token terms (comma-separated)")] = None,
+    alert_blocked_chains: Annotated[str | None, typer.Option(help="Alert gate: blocked chains (comma-separated)")] = None,
+    webhook_extra_json: Annotated[str | None, typer.Option(help="Extra webhook JSON object")] = None,
     clear_alerts: Annotated[bool, typer.Option(help="Remove all alerts from task")] = False,
     notes: Annotated[str | None, typer.Option(help="Replace task notes")] = None,
 ) -> None:
@@ -667,15 +687,26 @@ def task_configure(
     )
     next_interval = None if clear_interval else (interval_seconds if interval_seconds is not None else current.interval_seconds)
     current_alerts = None if clear_alerts else current.alerts
-    next_alerts = _build_alert_config(
-        webhook_url=webhook_url,
-        discord_webhook_url=discord_webhook_url,
-        telegram_bot_token=telegram_bot_token,
-        telegram_chat_id=telegram_chat_id,
-        alert_min_score=alert_min_score,
-        alert_cooldown_seconds=alert_cooldown_seconds,
-        from_existing=current_alerts,
-    )
+    try:
+        next_alerts = _build_alert_config(
+            webhook_url=webhook_url,
+            discord_webhook_url=discord_webhook_url,
+            telegram_bot_token=telegram_bot_token,
+            telegram_chat_id=telegram_chat_id,
+            alert_min_score=alert_min_score,
+            alert_cooldown_seconds=alert_cooldown_seconds,
+            alert_template=alert_template,
+            alert_top_n=alert_top_n,
+            alert_min_liquidity_usd=alert_min_liquidity_usd,
+            alert_max_vol_liq_ratio=alert_max_vol_liq_ratio,
+            alert_blocked_terms=alert_blocked_terms,
+            alert_blocked_chains=alert_blocked_chains,
+            webhook_extra_json=webhook_extra_json,
+            from_existing=current_alerts,
+        )
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
 
     try:
         updated = store.update_task(
@@ -704,30 +735,57 @@ def task_run(
     if not row:
         console.print(f"[red]Task '{task}' not found.[/red]")
         raise typer.Exit(code=1)
+
+    async def _run_once() -> dict[str, object]:
+        async with DexScreenerClient() as client:
+            scanner = HotScanner(client)
+            return await execute_task_once(
+                store=store,
+                scanner=scanner,
+                task=row,
+                mode="manual",
+                fire_alerts=not no_alerts,
+                mark_running=False,
+                block_on_error=False,
+            )
+
+    result = asyncio.run(_run_once())
+    candidates = result.get("candidates", [])
+    if not isinstance(candidates, list):
+        candidates = []
+    filters_data = result.get("filters") or {}
     filters = _filters_for_task(row, store)
-    candidates = asyncio.run(_scan(filters))
-    store.touch_task_run(row.id)
-    alert_result = {"sent": False, "reason": "disabled", "channels": {}}
-    if not no_alerts:
-        refreshed = store.get_task(row.id) or row
-        alert_result = asyncio.run(send_alerts(refreshed, candidates))
-        if alert_result.get("sent"):
-            store.touch_task_alert(row.id)
+    if isinstance(filters_data, dict) and filters_data:
+        filters = ScanFilters(
+            chains=tuple(filters_data.get("chains", list(filters.chains))),
+            limit=int(filters_data.get("limit", filters.limit)),
+            min_liquidity_usd=float(filters_data.get("min_liquidity_usd", filters.min_liquidity_usd)),
+            min_volume_h24_usd=float(filters_data.get("min_volume_h24_usd", filters.min_volume_h24_usd)),
+            min_txns_h1=int(filters_data.get("min_txns_h1", filters.min_txns_h1)),
+            min_price_change_h1=float(filters_data.get("min_price_change_h1", filters.min_price_change_h1)),
+        )
+    alert_result = result.get("alert", {"sent": False, "reason": "unknown", "channels": {}})
 
     if as_json:
         typer.echo(
             json.dumps(
                 {
-                    "task": row.to_dict(),
-                    "results": [_candidate_json(c) for c in candidates],
+                    "task": result.get("task", row.to_dict()),
+                    "results": [_candidate_json(c) for c in candidates if isinstance(c, HotTokenCandidate)],
                     "alert": alert_result,
+                    "run": result.get("run"),
+                    "ok": result.get("ok", False),
+                    "error": result.get("error"),
                 },
                 indent=2,
                 ensure_ascii=True,
             )
         )
         return
-    _render_scan_board(candidates, filters)
+    if not result.get("ok", False):
+        console.print(f"[red]Task run failed: {result.get('error')}[/red]")
+        raise typer.Exit(code=1)
+    _render_scan_board([c for c in candidates if isinstance(c, HotTokenCandidate)], filters)
     if alert_result.get("sent"):
         console.print(f"[green]Alerts sent: {json.dumps(alert_result['channels'])}[/green]")
     else:
@@ -754,46 +812,41 @@ def task_daemon(
             cycle = 0
             while True:
                 cycle += 1
-                now = datetime.now(UTC)
                 store = StateStore()
-                all_rows = store.list_tasks()
-                if task:
-                    all_rows = [t for t in all_rows if t.id.lower() == task.lower() or t.name.lower() == task.lower()]
-                if all_tasks:
-                    all_rows = [t for t in all_rows if t.status != "blocked"]
-                due_rows: list[ScanTask] = []
-                for row in all_rows:
-                    if row.status in {"blocked", "done"}:
-                        continue
-                    interval = row.interval_seconds or default_interval_seconds
-                    last_run = _parse_iso(row.last_run_at)
-                    due = (last_run is None) or ((now - last_run).total_seconds() >= interval)
-                    if due:
-                        due_rows.append(row)
+                due_rows = select_due_tasks(
+                    store=store,
+                    task_name_or_id=task,
+                    all_tasks=all_tasks,
+                    default_interval_seconds=default_interval_seconds,
+                )
 
                 if not due_rows:
                     console.print(f"[dim]Cycle {cycle}: no due tasks.[/dim]")
                 for row in due_rows:
-                    store.update_task_status(row.id, status="running")
-                    try:
-                        filters = _filters_for_task(row, store)
-                        candidates = await scanner.scan(filters)
-                        store.touch_task_run(row.id)
-                        alert_result = {"sent": False, "reason": "disabled"}
-                        if not no_alerts:
-                            latest = store.get_task(row.id) or row
-                            alert_result = await send_alerts(latest, candidates)
-                            if alert_result.get("sent"):
-                                store.touch_task_alert(row.id)
-                        store.update_task_status(row.id, status="todo")
-                        top = candidates[0].pair.base_symbol if candidates else "none"
+                    result = await execute_task_once(
+                        store=store,
+                        scanner=scanner,
+                        task=row,
+                        mode="daemon",
+                        fire_alerts=not no_alerts,
+                        mark_running=True,
+                        block_on_error=True,
+                    )
+                    if result.get("ok"):
+                        candidates = result.get("candidates", [])
+                        top = "none"
+                        if isinstance(candidates, list) and candidates and isinstance(candidates[0], HotTokenCandidate):
+                            top = candidates[0].pair.base_symbol
+                        alert_reason = "unknown"
+                        alert = result.get("alert")
+                        if isinstance(alert, dict):
+                            alert_reason = str(alert.get("reason", "unknown"))
                         console.print(
-                            f"[cyan]task={row.name}[/cyan] results={len(candidates)} top={top} "
-                            f"alerts={alert_result.get('reason')}"
+                            f"[cyan]task={row.name}[/cyan] results={len(candidates) if isinstance(candidates, list) else 0} "
+                            f"top={top} alerts={alert_reason}"
                         )
-                    except Exception as exc:
-                        store.update_task_status(row.id, status="blocked")
-                        console.print(f"[red]task={row.name} failed and was blocked: {exc}[/red]")
+                    else:
+                        console.print(f"[red]task={row.name} failed and was blocked: {result.get('error')}[/red]")
 
                 if once:
                     return
@@ -803,6 +856,107 @@ def task_daemon(
         asyncio.run(loop())
     except KeyboardInterrupt:
         console.print("[dim]Stopped task daemon.[/dim]")
+
+
+@task_app.command("test-alert")
+def task_test_alert(
+    task: Annotated[str, typer.Argument(help="Task id or name")],
+    with_scan: Annotated[bool, typer.Option(help="Run a fresh scan and include top candidates in alert")] = True,
+) -> None:
+    """Send a test alert through configured task channels."""
+    store = StateStore()
+    row = store.get_task(task)
+    if not row:
+        console.print(f"[red]Task '{task}' not found.[/red]")
+        raise typer.Exit(code=1)
+
+    async def _run() -> dict[str, Any]:
+        candidates: list[HotTokenCandidate] = []
+        if with_scan:
+            async with DexScreenerClient() as client:
+                scanner = HotScanner(client)
+                candidates = await scanner.scan(_filters_for_task(row, store))
+        return await send_test_alert(row, candidates=candidates)
+
+    result = asyncio.run(_run())
+    if result.get("sent"):
+        store.touch_task_alert(row.id)
+        console.print(f"[green]Test alert sent: {json.dumps(result.get('channels', {}))}[/green]")
+        return
+    console.print(f"[yellow]Test alert not sent: {result.get('reason')}[/yellow]")
+
+
+@task_app.command("runs")
+def task_runs(
+    task: Annotated[str | None, typer.Option(help="Filter by task id or name")] = None,
+    limit: Annotated[int, typer.Option(help="Max run rows")] = 50,
+) -> None:
+    """List task execution history."""
+    store = StateStore()
+    rows = store.list_runs(task=task, limit=limit)
+    if not rows:
+        console.print("[yellow]No run history found.[/yellow]")
+        return
+    table = Table(title="Task Run History")
+    table.add_column("Finished", style="dim")
+    table.add_column("Task")
+    table.add_column("Mode")
+    table.add_column("Status")
+    table.add_column("Results", justify="right")
+    table.add_column("Top")
+    table.add_column("Score", justify="right")
+    table.add_column("Alert")
+    table.add_column("Ms", justify="right")
+    for r in rows:
+        table.add_row(
+            r.finished_at,
+            r.task_name,
+            r.mode,
+            r.status,
+            str(r.result_count),
+            f"{r.top_chain}:{r.top_token}" if r.top_token else "-",
+            f"{r.top_score:.2f}" if r.top_score is not None else "-",
+            r.alert_reason,
+            str(r.duration_ms),
+        )
+    console.print(table)
+
+
+@state_app.command("export")
+def state_export(
+    path: Annotated[str, typer.Option(help="Output file path")] = "dexscreener-state-export.json",
+) -> None:
+    """Export presets/tasks/runs into one JSON file."""
+    store = StateStore()
+    bundle = store.export_bundle()
+    out = Path(path).expanduser().resolve()
+    out.write_text(json.dumps(bundle, indent=2, ensure_ascii=True), encoding="utf-8")
+    console.print(f"[green]Exported state to {out}[/green]")
+
+
+@state_app.command("import")
+def state_import(
+    path: Annotated[str, typer.Option(help="Input file path")] = "dexscreener-state-export.json",
+    mode: Annotated[str, typer.Option(help="merge or replace")] = "merge",
+) -> None:
+    """Import presets/tasks/runs from a JSON export."""
+    if mode not in {"merge", "replace"}:
+        console.print("[red]Invalid mode. Use merge or replace.[/red]")
+        raise typer.Exit(code=1)
+    src = Path(path).expanduser().resolve()
+    if not src.exists():
+        console.print(f"[red]File not found: {src}[/red]")
+        raise typer.Exit(code=1)
+    try:
+        bundle = json.loads(src.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        console.print(f"[red]Invalid JSON: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    store = StateStore()
+    counts = store.import_bundle(bundle, mode=mode)  # type: ignore[arg-type]
+    console.print(
+        f"[green]Imported state ({mode}). presets={counts['presets']} tasks={counts['tasks']} runs={counts['runs']}[/green]"
+    )
 
 
 if __name__ == "__main__":
