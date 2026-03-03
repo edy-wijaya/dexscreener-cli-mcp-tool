@@ -46,6 +46,7 @@ app.add_typer(preset_app, name="preset")
 app.add_typer(task_app, name="task")
 app.add_typer(state_app, name="state")
 console = Console()
+NEW_RUNNER_SORT_MODES: tuple[str, ...] = ("score", "readiness", "rs", "volume", "momentum")
 
 
 def _status_badge(status: str) -> Text:
@@ -266,13 +267,83 @@ def _new_runner_rank(candidate: HotTokenCandidate) -> tuple[float, float, int, f
     )
 
 
+def _new_runner_sort_key(candidate: HotTokenCandidate, mode: str) -> tuple[float, ...]:
+    if mode == "readiness":
+        return (
+            candidate.analytics.breakout_readiness,
+            candidate.analytics.compression_score,
+            candidate.analytics.relative_strength,
+            candidate.score,
+            candidate.pair.volume_h1,
+        )
+    if mode == "rs":
+        return (
+            candidate.analytics.relative_strength,
+            candidate.analytics.breakout_readiness,
+            candidate.score,
+            candidate.pair.volume_h1,
+        )
+    if mode == "volume":
+        return (
+            candidate.pair.volume_h1,
+            candidate.pair.txns_h1,
+            candidate.score,
+            candidate.analytics.breakout_readiness,
+        )
+    if mode == "momentum":
+        return (
+            candidate.pair.price_change_h1,
+            candidate.analytics.relative_strength,
+            candidate.score,
+            candidate.pair.volume_h1,
+        )
+    return (
+        candidate.score,
+        candidate.analytics.breakout_readiness,
+        candidate.analytics.relative_strength,
+        candidate.pair.volume_h1,
+    )
+
+
+def _passes_new_runner_quality(
+    candidate: HotTokenCandidate,
+    *,
+    min_breakout_readiness: float,
+    min_relative_strength: float,
+    decay_filter: bool,
+    min_half_life_minutes: float,
+    min_decay_ratio: float,
+) -> bool:
+    analytics = candidate.analytics
+    if analytics.breakout_readiness < min_breakout_readiness:
+        return False
+    if analytics.relative_strength < min_relative_strength:
+        return False
+    if not decay_filter:
+        return True
+    if analytics.fast_decay:
+        return False
+    if analytics.momentum_half_life_min is not None and analytics.momentum_half_life_min < min_half_life_minutes:
+        return False
+    if analytics.momentum_decay_ratio is not None and analytics.momentum_decay_ratio < min_decay_ratio:
+        return False
+    return True
+
+
 def _select_new_runners(
     *,
     candidates: list[HotTokenCandidate],
     max_age_hours: float,
     include_unknown_age: bool,
+    sort_by: str,
+    min_breakout_readiness: float,
+    min_relative_strength: float,
+    decay_filter: bool,
+    min_half_life_minutes: float,
+    min_decay_ratio: float,
     limit: int,
 ) -> list[HotTokenCandidate]:
+    selected_sort = sort_by if sort_by in NEW_RUNNER_SORT_MODES else "score"
     fresh: list[HotTokenCandidate] = []
     for candidate in candidates:
         age = candidate.pair.age_hours
@@ -280,8 +351,17 @@ def _select_new_runners(
             continue
         if age is not None and age > max_age_hours:
             continue
+        if not _passes_new_runner_quality(
+            candidate,
+            min_breakout_readiness=min_breakout_readiness,
+            min_relative_strength=min_relative_strength,
+            decay_filter=decay_filter,
+            min_half_life_minutes=min_half_life_minutes,
+            min_decay_ratio=min_decay_ratio,
+        ):
+            continue
         fresh.append(candidate)
-    return sorted(fresh, key=_new_runner_rank, reverse=True)[:limit]
+    return sorted(fresh, key=lambda c: _new_runner_sort_key(c, selected_sort), reverse=True)[:limit]
 
 
 @app.command("hot")
@@ -321,6 +401,12 @@ def new_runners(
     min_volume_h24_usd: Annotated[float, typer.Option(help="Minimum 24h volume in USD")] = 50_000.0,
     min_txns_h1: Annotated[int, typer.Option(help="Minimum 1h transactions")] = 25,
     min_price_change_h1: Annotated[float, typer.Option(help="Minimum 1h price change percent")] = 0.0,
+    sort_by: Annotated[str, typer.Option(help="Sort mode: score/readiness/rs/volume/momentum")] = "score",
+    min_breakout_readiness: Annotated[float, typer.Option(help="Minimum breakout readiness (0-100)")] = 0.0,
+    min_relative_strength: Annotated[float, typer.Option(help="Minimum relative strength vs chain baseline")] = -999.0,
+    decay_filter: Annotated[bool, typer.Option(help="Filter fast-decay momentum profiles")] = True,
+    min_half_life_minutes: Annotated[float, typer.Option(help="Minimum momentum half-life in minutes (if known)")] = 6.0,
+    min_decay_ratio: Annotated[float, typer.Option(help="Minimum momentum decay ratio (if known)")] = 0.35,
     include_unknown_age: Annotated[bool, typer.Option(help="Include tokens with unknown pair age")] = False,
     as_json: Annotated[bool, typer.Option("--json", help="Output machine-readable JSON")] = False,
 ) -> None:
@@ -341,6 +427,12 @@ def new_runners(
         candidates=candidates,
         max_age_hours=max_age_hours,
         include_unknown_age=include_unknown_age,
+        sort_by=sort_by,
+        min_breakout_readiness=min_breakout_readiness,
+        min_relative_strength=min_relative_strength,
+        decay_filter=decay_filter,
+        min_half_life_minutes=min_half_life_minutes,
+        min_decay_ratio=min_decay_ratio,
         limit=limit,
     )
     if as_json:
@@ -381,6 +473,12 @@ def new_runners_watch(
     min_volume_h24_usd: Annotated[float, typer.Option(help="Minimum 24h volume in USD")] = 50_000.0,
     min_txns_h1: Annotated[int, typer.Option(help="Minimum 1h transactions")] = 25,
     min_price_change_h1: Annotated[float, typer.Option(help="Minimum 1h price change percent")] = 0.0,
+    sort_by: Annotated[str, typer.Option(help="Sort mode: score/readiness/rs/volume/momentum")] = "score",
+    min_breakout_readiness: Annotated[float, typer.Option(help="Minimum breakout readiness (0-100)")] = 0.0,
+    min_relative_strength: Annotated[float, typer.Option(help="Minimum relative strength vs chain baseline")] = -999.0,
+    decay_filter: Annotated[bool, typer.Option(help="Filter fast-decay momentum profiles")] = True,
+    min_half_life_minutes: Annotated[float, typer.Option(help="Minimum momentum half-life in minutes (if known)")] = 6.0,
+    min_decay_ratio: Annotated[float, typer.Option(help="Minimum momentum decay ratio (if known)")] = 0.35,
     include_unknown_age: Annotated[bool, typer.Option(help="Include tokens with unknown pair age")] = False,
     cycles: Annotated[int, typer.Option(help="Stop after N refreshes (0 = infinite)")] = 0,
     screen: Annotated[bool, typer.Option(help="Use fullscreen alternate buffer")] = True,
@@ -410,6 +508,12 @@ def new_runners_watch(
                         candidates=raw,
                         max_age_hours=max_age_hours,
                         include_unknown_age=include_unknown_age,
+                        sort_by=sort_by,
+                        min_breakout_readiness=min_breakout_readiness,
+                        min_relative_strength=min_relative_strength,
+                        decay_filter=decay_filter,
+                        min_half_life_minutes=min_half_life_minutes,
+                        min_decay_ratio=min_decay_ratio,
                         limit=limit,
                     )
                     view = Group(
