@@ -79,11 +79,14 @@ class ScanTask:
     name: str
     preset: str | None
     filters: dict[str, Any] | None
+    interval_seconds: int | None
+    alerts: dict[str, Any] | None
     status: TaskStatus
     notes: str
     created_at: str
     updated_at: str
     last_run_at: str | None
+    last_alert_at: str | None
 
     @classmethod
     def create(
@@ -92,6 +95,8 @@ class ScanTask:
         name: str,
         preset: str | None = None,
         filters: dict[str, Any] | None = None,
+        interval_seconds: int | None = None,
+        alerts: dict[str, Any] | None = None,
         status: TaskStatus = "todo",
         notes: str = "",
     ) -> "ScanTask":
@@ -101,11 +106,14 @@ class ScanTask:
             name=name,
             preset=preset,
             filters=filters,
+            interval_seconds=interval_seconds,
+            alerts=alerts,
             status=status,
             notes=notes,
             created_at=now,
             updated_at=now,
             last_run_at=None,
+            last_alert_at=None,
         )
 
     @classmethod
@@ -115,11 +123,14 @@ class ScanTask:
             name=str(payload["name"]),
             preset=payload.get("preset"),
             filters=payload.get("filters"),
+            interval_seconds=payload.get("interval_seconds"),
+            alerts=payload.get("alerts"),
             status=str(payload.get("status", "todo")),  # type: ignore[assignment]
             notes=str(payload.get("notes", "")),
             created_at=str(payload.get("created_at", utc_now_iso())),
             updated_at=str(payload.get("updated_at", utc_now_iso())),
             last_run_at=payload.get("last_run_at"),
+            last_alert_at=payload.get("last_alert_at"),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -205,12 +216,21 @@ class StateStore:
         name: str,
         preset: str | None = None,
         filters: dict[str, Any] | None = None,
+        interval_seconds: int | None = None,
+        alerts: dict[str, Any] | None = None,
         notes: str = "",
     ) -> ScanTask:
         rows = self.list_tasks()
         if any(t.name.lower() == name.lower() for t in rows):
             raise ValueError(f"Task '{name}' already exists")
-        task = ScanTask.create(name=name, preset=preset, filters=filters, notes=notes)
+        task = ScanTask.create(
+            name=name,
+            preset=preset,
+            filters=filters,
+            interval_seconds=interval_seconds,
+            alerts=alerts,
+            notes=notes,
+        )
         rows.append(task)
         self._save_json(self.tasks_file, {"tasks": [t.to_dict() for t in rows]})
         return task
@@ -237,6 +257,49 @@ class StateStore:
                 now = utc_now_iso()
                 task.last_run_at = now
                 task.updated_at = now
+                updated = task
+                break
+        if not updated:
+            raise ValueError(f"Task '{name_or_id}' not found")
+        self._save_json(self.tasks_file, {"tasks": [t.to_dict() for t in rows]})
+        return updated
+
+    def touch_task_alert(self, name_or_id: str) -> ScanTask:
+        rows = self.list_tasks()
+        updated: ScanTask | None = None
+        for task in rows:
+            if task.id.lower() == name_or_id.lower() or task.name.lower() == name_or_id.lower():
+                now = utc_now_iso()
+                task.last_alert_at = now
+                task.updated_at = now
+                updated = task
+                break
+        if not updated:
+            raise ValueError(f"Task '{name_or_id}' not found")
+        self._save_json(self.tasks_file, {"tasks": [t.to_dict() for t in rows]})
+        return updated
+
+    def update_task(
+        self,
+        name_or_id: str,
+        *,
+        preset: str | None = None,
+        filters: dict[str, Any] | None = None,
+        interval_seconds: int | None = None,
+        alerts: dict[str, Any] | None = None,
+        notes: str | None = None,
+    ) -> ScanTask:
+        rows = self.list_tasks()
+        updated: ScanTask | None = None
+        for task in rows:
+            if task.id.lower() == name_or_id.lower() or task.name.lower() == name_or_id.lower():
+                task.preset = preset
+                task.filters = filters
+                task.interval_seconds = interval_seconds
+                task.alerts = alerts
+                if notes is not None:
+                    task.notes = notes
+                task.updated_at = utc_now_iso()
                 updated = task
                 break
         if not updated:
