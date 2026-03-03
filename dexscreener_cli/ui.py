@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import sys
 
 from rich import box
+from rich.columns import Columns
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -292,6 +293,102 @@ def render_new_runners_table(
         )
     if not candidates:
         table.add_row("-", "No fresh runners found", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-")
+    return table
+
+
+def render_top_runner_cards(candidates: list[HotTokenCandidate], *, pulse: bool = False) -> Columns:
+    cards: list[Panel] = []
+    for rank in range(1, 4):
+        if rank <= len(candidates):
+            candidate = candidates[rank - 1]
+            p = candidate.pair
+            border = "bright_green" if pulse and rank == 1 else "bright_blue"
+            txt = Text()
+            txt.append(f"#{rank} ", style="bold bright_white")
+            txt.append(f"{_safe_text(p.base_symbol)}\n", style="bold bright_cyan")
+            txt.append(f"Score {candidate.score:.1f}\n", style=_score_style(candidate.score))
+            txt.append("1h: ", style="dim")
+            txt.append(f"{fmt_pct(p.price_change_h1)}\n", style=_pct_style(p.price_change_h1))
+            txt.append("24h Vol: ", style="dim")
+            txt.append(f"{fmt_usd(p.volume_h24)}\n", style="bright_cyan")
+            txt.append("Flow: ", style="dim")
+            txt.append_text(_flow_meter(p.buys_h1, p.sells_h1))
+            txt.append("\n")
+            txt.append(f"Age: {_age_label(p.age_hours)}", style="bright_cyan")
+            cards.append(
+                Panel(
+                    txt,
+                    title=f"[bold bright_white]Top {rank}[/bold bright_white]",
+                    border_style=border,
+                    box=box.ROUNDED,
+                )
+            )
+            continue
+
+        cards.append(
+            Panel(
+                Text("Waiting for runner data...", style="dim"),
+                title=f"[bold]Top {rank}[/bold]",
+                border_style="dim",
+                box=box.ROUNDED,
+            )
+        )
+    return Columns(cards, equal=True, expand=True)
+
+
+def _move_text(
+    *,
+    key: tuple[str, str],
+    rank: int,
+    previous_ranks: dict[tuple[str, str], int],
+) -> Text:
+    prev = previous_ranks.get(key)
+    if prev is None:
+        return Text("new", style="bold bright_cyan")
+    delta = prev - rank
+    if delta > 0:
+        return Text(f"^{delta}", style="bold bright_green")
+    if delta < 0:
+        return Text(f"v{abs(delta)}", style="bold bright_red")
+    return Text("=", style="dim")
+
+
+def render_rank_movers_table(
+    candidates: list[HotTokenCandidate],
+    *,
+    previous_ranks: dict[tuple[str, str], int],
+    limit: int,
+) -> Table:
+    table = Table(
+        title="[bold bright_white]Rank Movers[/bold bright_white]",
+        box=box.ROUNDED,
+        header_style="bold bright_white",
+        row_styles=["none", "dim"],
+    )
+    table.add_column("Rank", justify="right")
+    table.add_column("Move", justify="right")
+    table.add_column("Token", style="bold yellow")
+    table.add_column("Score", justify="right")
+    table.add_column("1h", justify="right")
+    table.add_column("Vol1h", justify="right")
+    table.add_column("Tx1h", justify="right")
+    table.add_column("Age", justify="right")
+
+    for rank, candidate in enumerate(candidates[:limit], start=1):
+        p = candidate.pair
+        table.add_row(
+            str(rank),
+            _move_text(key=candidate.key, rank=rank, previous_ranks=previous_ranks),
+            _safe_text(p.base_symbol),
+            Text(f"{candidate.score:.1f}", style=_score_style(candidate.score)),
+            Text(fmt_pct(p.price_change_h1), style=_pct_style(p.price_change_h1)),
+            fmt_usd(p.volume_h1),
+            str(p.txns_h1),
+            _age_label(p.age_hours),
+        )
+
+    if not candidates:
+        table.add_row("-", "-", "No movers yet", "-", "-", "-", "-", "-")
     return table
 
 
