@@ -137,12 +137,92 @@ class ScanTask:
         return asdict(self)
 
 
+@dataclass(slots=True)
+class TaskRunRecord:
+    id: str
+    task_id: str
+    task_name: str
+    mode: str
+    started_at: str
+    finished_at: str
+    duration_ms: int
+    status: str
+    result_count: int
+    top_chain: str | None
+    top_token: str | None
+    top_score: float | None
+    alert_sent: bool
+    alert_reason: str
+    error: str | None
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        task_id: str,
+        task_name: str,
+        mode: str,
+        started_at: str,
+        finished_at: str,
+        duration_ms: int,
+        status: str,
+        result_count: int,
+        top_chain: str | None = None,
+        top_token: str | None = None,
+        top_score: float | None = None,
+        alert_sent: bool = False,
+        alert_reason: str = "n/a",
+        error: str | None = None,
+    ) -> "TaskRunRecord":
+        return cls(
+            id=uuid4().hex[:12],
+            task_id=task_id,
+            task_name=task_name,
+            mode=mode,
+            started_at=started_at,
+            finished_at=finished_at,
+            duration_ms=duration_ms,
+            status=status,
+            result_count=result_count,
+            top_chain=top_chain,
+            top_token=top_token,
+            top_score=top_score,
+            alert_sent=alert_sent,
+            alert_reason=alert_reason,
+            error=error,
+        )
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "TaskRunRecord":
+        return cls(
+            id=str(payload["id"]),
+            task_id=str(payload.get("task_id", "")),
+            task_name=str(payload.get("task_name", "")),
+            mode=str(payload.get("mode", "manual")),
+            started_at=str(payload.get("started_at", utc_now_iso())),
+            finished_at=str(payload.get("finished_at", utc_now_iso())),
+            duration_ms=int(payload.get("duration_ms", 0)),
+            status=str(payload.get("status", "ok")),
+            result_count=int(payload.get("result_count", 0)),
+            top_chain=payload.get("top_chain"),
+            top_token=payload.get("top_token"),
+            top_score=payload.get("top_score"),
+            alert_sent=bool(payload.get("alert_sent", False)),
+            alert_reason=str(payload.get("alert_reason", "n/a")),
+            error=payload.get("error"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
 class StateStore:
     def __init__(self, base_dir: Path | None = None) -> None:
         self.base_dir = base_dir or (Path.home() / ".dexscreener-cli")
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.presets_file = self.base_dir / "presets.json"
         self.tasks_file = self.base_dir / "tasks.json"
+        self.runs_file = self.base_dir / "runs.json"
 
     def _load_json(self, path: Path) -> dict[str, Any]:
         if not path.exists():
@@ -315,3 +395,63 @@ class StateStore:
             return False
         self._save_json(self.tasks_file, {"tasks": [t.to_dict() for t in new_rows]})
         return True
+
+    # Runs
+    def list_runs(self, task: str | None = None, limit: int = 200) -> list[TaskRunRecord]:
+        data = self._load_json(self.runs_file)
+        rows = [TaskRunRecord.from_dict(r) for r in data.get("runs", [])]
+        if task:
+            key = task.strip().lower()
+            rows = [r for r in rows if r.task_id.lower() == key or r.task_name.lower() == key]
+        rows.sort(key=lambda r: r.finished_at, reverse=True)
+        return rows[:limit]
+
+    def append_run(self, run: TaskRunRecord) -> TaskRunRecord:
+        rows = self.list_runs(limit=10_000)
+        rows.append(run)
+        rows.sort(key=lambda r: r.finished_at, reverse=False)
+        # Keep file bounded for local usage.
+        rows = rows[-5000:]
+        self._save_json(self.runs_file, {"runs": [r.to_dict() for r in rows]})
+        return run
+
+    # State snapshot
+    def export_bundle(self) -> dict[str, Any]:
+        return {
+            "version": 1,
+            "exported_at": utc_now_iso(),
+            "presets": [p.to_dict() for p in self.list_presets()],
+            "tasks": [t.to_dict() for t in self.list_tasks()],
+            "runs": [r.to_dict() for r in self.list_runs(limit=50_000)],
+        }
+
+    def import_bundle(self, bundle: dict[str, Any], mode: Literal["merge", "replace"] = "merge") -> dict[str, int]:
+        presets_in = [ScanPreset.from_dict(p) for p in bundle.get("presets", [])]
+        tasks_in = [ScanTask.from_dict(t) for t in bundle.get("tasks", [])]
+        runs_in = [TaskRunRecord.from_dict(r) for r in bundle.get("runs", [])]
+
+        if mode == "replace":
+            self._save_json(self.presets_file, {"presets": [p.to_dict() for p in presets_in]})
+            self._save_json(self.tasks_file, {"tasks": [t.to_dict() for t in tasks_in]})
+            self._save_json(self.runs_file, {"runs": [r.to_dict() for r in runs_in]})
+            return {"presets": len(presets_in), "tasks": len(tasks_in), "runs": len(runs_in)}
+
+        # merge mode
+        preset_map = {p.name.lower(): p for p in self.list_presets()}
+        for p in presets_in:
+            preset_map[p.name.lower()] = p
+        merged_presets = sorted(preset_map.values(), key=lambda p: p.name.lower())
+        self._save_json(self.presets_file, {"presets": [p.to_dict() for p in merged_presets]})
+
+        task_map = {t.name.lower(): t for t in self.list_tasks()}
+        for t in tasks_in:
+            task_map[t.name.lower()] = t
+        merged_tasks = list(task_map.values())
+        self._save_json(self.tasks_file, {"tasks": [t.to_dict() for t in merged_tasks]})
+
+        run_map = {r.id: r for r in self.list_runs(limit=50_000)}
+        for r in runs_in:
+            run_map[r.id] = r
+        merged_runs = sorted(run_map.values(), key=lambda r: r.finished_at, reverse=False)[-5000:]
+        self._save_json(self.runs_file, {"runs": [r.to_dict() for r in merged_runs]})
+        return {"presets": len(merged_presets), "tasks": len(merged_tasks), "runs": len(merged_runs)}
