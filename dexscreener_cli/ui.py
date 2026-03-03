@@ -198,6 +198,103 @@ def render_hot_table(
     return table
 
 
+def render_new_runner_spotlight(
+    candidates: list[HotTokenCandidate],
+    *,
+    chain: str,
+    max_age_hours: float,
+    limit: int,
+) -> Panel:
+    txt = Text()
+    txt.append(f"Chain: {chain}\n", style="bold bright_blue")
+    txt.append(f"Window: <= {max_age_hours:.0f}h\n", style="dim")
+    txt.append(f"Target: top {limit}\n", style="dim")
+    txt.append("\n")
+    txt.append("Top Movers\n", style="bold bright_white")
+
+    if not candidates:
+        txt.append("No fresh runners found with this filter set.", style="yellow")
+        return Panel(
+            txt,
+            title="[bold bright_white]New Runner Radar[/bold bright_white]",
+            border_style="bright_blue",
+            box=box.ROUNDED,
+        )
+
+    for i, candidate in enumerate(candidates[:3], start=1):
+        p = candidate.pair
+        rank_style = "bold bright_yellow" if i == 1 else "bold bright_white"
+        age = _age_label(p.age_hours)
+        txt.append(f"{i}. ", style=rank_style)
+        txt.append(f"{_safe_text(p.base_symbol)} ", style="bold cyan")
+        txt.append(f"{fmt_pct(p.price_change_h1)}", style=_pct_style(p.price_change_h1))
+        txt.append(" | ", style="dim")
+        txt.append(f"score {candidate.score:.1f}", style=_score_style(candidate.score))
+        txt.append(" | ", style="dim")
+        txt.append(f"age {age}\n", style="white")
+    return Panel(
+        txt,
+        title="[bold bright_white]New Runner Radar[/bold bright_white]",
+        border_style="bright_blue",
+        box=box.ROUNDED,
+    )
+
+
+def render_new_runners_table(
+    candidates: list[HotTokenCandidate],
+    *,
+    chain: str,
+    max_age_hours: float,
+    limit: int,
+) -> Table:
+    table = Table(
+        title=(
+            f"[bold bright_white]Best New Runners[/bold bright_white]  "
+            f"[cyan]chain={chain}[/cyan]  "
+            f"[yellow]top={limit}[/yellow]  "
+            f"[magenta]age<={max_age_hours:.0f}h[/magenta]"
+        ),
+        box=box.ROUNDED,
+        header_style="bold bright_white",
+        row_styles=["none", "dim"],
+    )
+    table.add_column("#", justify="right")
+    table.add_column("Token", style="bold yellow")
+    table.add_column("Score", justify="right")
+    table.add_column("1h", justify="right")
+    table.add_column("24h", justify="right")
+    table.add_column("1h Vol", justify="right")
+    table.add_column("24h Vol", justify="right")
+    table.add_column("Txns1h", justify="right")
+    table.add_column("Liquidity", justify="right")
+    table.add_column("Age", justify="right")
+    table.add_column("Flow", no_wrap=True)
+    table.add_column("Signal")
+
+    for i, candidate in enumerate(candidates[:limit], start=1):
+        p = candidate.pair
+        signal = ", ".join(candidate.tags[:2]) if candidate.tags else candidate.discovery
+        score = Text(f"{candidate.score:.1f}", style=_score_style(candidate.score))
+        age = Text(_age_label(p.age_hours), style="bright_cyan")
+        table.add_row(
+            str(i),
+            _safe_text(p.base_symbol),
+            score,
+            Text(fmt_pct(p.price_change_h1), style=_pct_style(p.price_change_h1)),
+            Text(fmt_pct(p.price_change_h24), style=_pct_style(p.price_change_h24)),
+            fmt_usd(p.volume_h1),
+            fmt_usd(p.volume_h24),
+            str(p.txns_h1),
+            fmt_usd(p.liquidity_usd),
+            age,
+            _flow_meter(p.buys_h1, p.sells_h1),
+            Text(_safe_text(signal), style=_signal_style(candidate.tags, candidate.discovery)),
+        )
+    if not candidates:
+        table.add_row("-", "No fresh runners found", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-")
+    return table
+
+
 def render_search_table(pairs: list[PairSnapshot]) -> Table:
     table = Table(
         title="[bold bright_white]Search Results[/bold bright_white]",
