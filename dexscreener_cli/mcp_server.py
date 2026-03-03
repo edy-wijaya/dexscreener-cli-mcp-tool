@@ -9,6 +9,7 @@ from .config import DEFAULT_CHAINS, ScanFilters
 from .models import HotTokenCandidate
 from .scanner import HotScanner
 from .scoring import build_distribution_heuristics
+from .state import ScanPreset, StateStore
 
 mcp = FastMCP("dexscreener-cli-mcp-tool")
 
@@ -42,6 +43,13 @@ def _serialize_candidate(candidate: HotTokenCandidate) -> dict[str, Any]:
     }
 
 
+def _parse_chains(raw: str | None) -> tuple[str, ...]:
+    if not raw:
+        return DEFAULT_CHAINS
+    values = tuple(c.strip().lower() for c in raw.split(",") if c.strip())
+    return values or DEFAULT_CHAINS
+
+
 @mcp.tool()
 async def scan_hot_tokens(
     chains: str = ",".join(DEFAULT_CHAINS),
@@ -65,6 +73,131 @@ async def scan_hot_tokens(
         )
         rows = await scanner.scan(filters)
         return [_serialize_candidate(c) for c in rows]
+
+
+@mcp.tool()
+async def save_preset(
+    name: str,
+    chains: str = ",".join(DEFAULT_CHAINS),
+    limit: int = 20,
+    min_liquidity_usd: float = 35_000.0,
+    min_volume_h24_usd: float = 90_000.0,
+    min_txns_h1: int = 80,
+    min_price_change_h1: float = 0.0,
+) -> dict[str, Any]:
+    """Save a named scan preset."""
+    filters = ScanFilters(
+        chains=_parse_chains(chains),
+        limit=limit,
+        min_liquidity_usd=min_liquidity_usd,
+        min_volume_h24_usd=min_volume_h24_usd,
+        min_txns_h1=min_txns_h1,
+        min_price_change_h1=min_price_change_h1,
+    )
+    store = StateStore()
+    preset = store.save_preset(ScanPreset.from_filters(name=name, filters=filters))
+    return preset.to_dict()
+
+
+@mcp.tool()
+async def list_presets() -> list[dict[str, Any]]:
+    """List saved presets."""
+    store = StateStore()
+    return [p.to_dict() for p in store.list_presets()]
+
+
+@mcp.tool()
+async def create_task(
+    name: str,
+    preset: str | None = None,
+    chains: str | None = None,
+    limit: int | None = None,
+    min_liquidity_usd: float | None = None,
+    min_volume_h24_usd: float | None = None,
+    min_txns_h1: int | None = None,
+    min_price_change_h1: float | None = None,
+    notes: str = "",
+) -> dict[str, Any]:
+    """Create a new scan task."""
+    store = StateStore()
+    overrides: dict[str, Any] = {}
+    if chains:
+        overrides["chains"] = list(_parse_chains(chains))
+    if limit is not None:
+        overrides["limit"] = limit
+    if min_liquidity_usd is not None:
+        overrides["min_liquidity_usd"] = min_liquidity_usd
+    if min_volume_h24_usd is not None:
+        overrides["min_volume_h24_usd"] = min_volume_h24_usd
+    if min_txns_h1 is not None:
+        overrides["min_txns_h1"] = min_txns_h1
+    if min_price_change_h1 is not None:
+        overrides["min_price_change_h1"] = min_price_change_h1
+
+    task = store.create_task(
+        name=name,
+        preset=preset,
+        filters=overrides or None,
+        notes=notes,
+    )
+    return task.to_dict()
+
+
+@mcp.tool()
+async def list_tasks(status: str | None = None) -> list[dict[str, Any]]:
+    """List scan tasks."""
+    store = StateStore()
+    if status and status not in {"todo", "running", "done", "blocked"}:
+        return [{"error": "Invalid status. Use todo/running/done/blocked"}]
+    rows = store.list_tasks(status=status) if status else store.list_tasks()
+    return [r.to_dict() for r in rows]
+
+
+@mcp.tool()
+async def run_task_scan(task: str) -> dict[str, Any]:
+    """Run a saved task scan and return ranked candidates."""
+    store = StateStore()
+    row = store.get_task(task)
+    if not row:
+        return {"error": f"Task '{task}' not found"}
+
+    filters = ScanFilters(chains=DEFAULT_CHAINS)
+    if row.preset:
+        preset = store.get_preset(row.preset)
+        if not preset:
+            return {"error": f"Task preset '{row.preset}' not found"}
+        filters = preset.to_filters()
+    if row.filters:
+        payload = row.filters
+        if payload.get("chains"):
+            filters.chains = tuple(payload["chains"])
+        if payload.get("limit") is not None:
+            filters.limit = int(payload["limit"])
+        if payload.get("min_liquidity_usd") is not None:
+            filters.min_liquidity_usd = float(payload["min_liquidity_usd"])
+        if payload.get("min_volume_h24_usd") is not None:
+            filters.min_volume_h24_usd = float(payload["min_volume_h24_usd"])
+        if payload.get("min_txns_h1") is not None:
+            filters.min_txns_h1 = int(payload["min_txns_h1"])
+        if payload.get("min_price_change_h1") is not None:
+            filters.min_price_change_h1 = float(payload["min_price_change_h1"])
+
+    async with DexScreenerClient() as client:
+        scanner = HotScanner(client)
+        rows = await scanner.scan(filters)
+    store.touch_task_run(row.id)
+    return {
+        "task": row.to_dict(),
+        "filters": {
+            "chains": list(filters.chains),
+            "limit": filters.limit,
+            "min_liquidity_usd": filters.min_liquidity_usd,
+            "min_volume_h24_usd": filters.min_volume_h24_usd,
+            "min_txns_h1": filters.min_txns_h1,
+            "min_price_change_h1": filters.min_price_change_h1,
+        },
+        "results": [_serialize_candidate(c) for c in rows],
+    }
 
 
 @mcp.tool()
