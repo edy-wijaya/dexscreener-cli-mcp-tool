@@ -104,6 +104,22 @@ def _flow_meter(buys: int, sells: int, width: int = 12) -> Text:
     return meter
 
 
+def _pulse_meter(pair: PairSnapshot) -> Text:
+    points = [
+        max(pair.volume_h24 / 24.0, 0.0),
+        max(pair.volume_h6 / 6.0, 0.0),
+        max(pair.volume_h1, 0.0),
+        max(pair.volume_m5 * 12.0, 0.0),
+    ]
+    chars = " .:-=+*#%@"
+    low = min(points)
+    high = max(points)
+    span = max(high - low, 1e-9)
+    spark = "".join(chars[int(((point - low) / span) * (len(chars) - 1))] for point in points)
+    rising = points[-1] >= points[0]
+    return Text(spark, style="bright_green" if rising else "yellow")
+
+
 def _signal_style(tags: list[str], discovery: str) -> str:
     normalized = {t.lower() for t in tags}
     if "transaction-spike" in normalized or "momentum" in normalized:
@@ -266,67 +282,43 @@ def render_new_runners_table(
     table.add_column("Token", style="bold yellow")
     table.add_column("Score", justify="right")
     table.add_column("Ready", justify="right")
-    table.add_column("Comp", justify="right")
     table.add_column("RS", justify="right")
     table.add_column("1h", justify="right")
-    table.add_column("24h", justify="right")
-    table.add_column("1h Vol", justify="right")
     table.add_column("24h Vol", justify="right")
-    table.add_column("Txns1h", justify="right")
-    table.add_column("Liquidity", justify="right")
+    table.add_column("Tx1h", justify="right")
+    table.add_column("Liq", justify="right")
     table.add_column("Age", justify="right")
-    table.add_column("HL", justify="right")
-    table.add_column("Decay", justify="right")
+    table.add_column("Pulse", justify="right")
     table.add_column("Flow", no_wrap=True)
-    table.add_column("Signal")
 
     for i, candidate in enumerate(candidates[:limit], start=1):
         p = candidate.pair
         a = candidate.analytics
-        signal = ", ".join(candidate.tags[:2]) if candidate.tags else candidate.discovery
         is_selected = selected_index is not None and (i - 1) == selected_index
         token_style = "bold black on bright_cyan" if is_selected else "bold yellow"
         score_style = "bold black on bright_cyan" if is_selected else _score_style(candidate.score)
         score = Text(f"{candidate.score:.1f}", style=score_style)
-        age = Text(_age_label(p.age_hours), style="bright_cyan")
+        age = Text(_age_label(p.age_hours), style="bright_cyan" if p.age_hours is not None and p.age_hours < 24 else "white")
         rs_style = "bold bright_green" if a.relative_strength >= 8 else "bold bright_red" if a.relative_strength <= -8 else "white"
         readiness_style = "bold bright_green" if a.breakout_readiness >= 70 else "yellow" if a.breakout_readiness >= 55 else "dim"
-        decay_text = "-"
-        decay_style = "dim"
-        if a.momentum_decay_ratio is not None:
-            decay_text = f"{a.momentum_decay_ratio:.2f}"
-            decay_style = "bold bright_red" if a.fast_decay or a.momentum_decay_ratio < 0.35 else "white"
-        half_life_text = "-"
-        if a.momentum_half_life_min is not None:
-            half_life_text = f"{a.momentum_half_life_min:.1f}m"
         table.add_row(
             str(i),
             Text(_safe_text(p.base_symbol), style=token_style),
             score,
             Text(f"{a.breakout_readiness:.0f}", style=readiness_style),
-            Text(f"{a.compression_score:.0f}", style="bright_cyan"),
             Text(f"{a.relative_strength:+.1f}", style=rs_style),
             Text(fmt_pct(p.price_change_h1), style=_pct_style(p.price_change_h1)),
-            Text(fmt_pct(p.price_change_h24), style=_pct_style(p.price_change_h24)),
-            fmt_usd(p.volume_h1),
             fmt_usd(p.volume_h24),
             str(p.txns_h1),
             fmt_usd(p.liquidity_usd),
             age,
-            half_life_text,
-            Text(decay_text, style=decay_style),
+            _pulse_meter(p),
             _flow_meter(p.buys_h1, p.sells_h1),
-            Text(_safe_text(signal), style=_signal_style(candidate.tags, candidate.discovery)),
         )
     if not candidates:
         table.add_row(
             "-",
             "No fresh runners found",
-            "-",
-            "-",
-            "-",
-            "-",
-            "-",
             "-",
             "-",
             "-",
