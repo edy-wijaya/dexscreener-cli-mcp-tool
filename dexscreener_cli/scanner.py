@@ -9,6 +9,7 @@ from typing import Any
 
 from .client import DexScreenerClient
 from .config import ScanFilters
+from .holders import hydrate_pair_holders
 from .models import CandidateAnalytics, HotTokenCandidate, PairSnapshot
 from .scoring import score_hotness_detail
 
@@ -232,11 +233,6 @@ class HotScanner:
                 tags.append("momentum-decay")
             elif half_life_min is not None and half_life_min >= 25 and (decay_ratio or 0.0) > 0.65:
                 tags.append("momentum-persistent")
-            if risk_score <= 35:
-                tags.append("risk-high")
-            elif risk_score <= 55:
-                tags.append("risk-elevated")
-            tags.extend(f"risk:{flag}" for flag in risk_flags[:2])
             # keep stable order while dropping duplicates
             candidate.tags = list(dict.fromkeys(tags))
 
@@ -529,7 +525,9 @@ class HotScanner:
             ),
             reverse=True,
         )
-        return ranked[: filters.limit]
+        top = ranked[: filters.limit]
+        await hydrate_pair_holders([candidate.pair for candidate in top], max_pairs=filters.limit)
+        return top
 
     async def inspect_token(self, chain_id: str, token_address: str) -> list[PairSnapshot]:
         pairs = await self._client.get_token_pairs(chain_id, token_address)
@@ -538,15 +536,19 @@ class HotScanner:
             key=lambda p: (p.liquidity_usd, p.volume_h24, p.txns_h1),
             reverse=True,
         )
+        await hydrate_pair_holders(snapshots, max_pairs=min(len(snapshots), 12))
         return snapshots
 
     async def inspect_pair(self, chain_id: str, pair_address: str) -> PairSnapshot | None:
         row = await self._client.get_pair(chain_id, pair_address)
         if not row:
             return None
-        return PairSnapshot.from_api(row)
+        pair = PairSnapshot.from_api(row)
+        await hydrate_pair_holders([pair], max_pairs=1)
+        return pair
 
     async def search(self, query: str, limit: int = 20) -> list[PairSnapshot]:
         rows = await self._client.search_pairs(query)
         snapshots = [PairSnapshot.from_api(row) for row in rows[:limit]]
+        await hydrate_pair_holders(snapshots, max_pairs=min(limit, 20))
         return snapshots

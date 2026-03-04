@@ -23,6 +23,15 @@ def _as_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _as_int_or_none(value: Any) -> int | None:
+    try:
+        if value is None:
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 @dataclass(slots=True)
 class PairSnapshot:
     chain_id: str
@@ -47,6 +56,8 @@ class PairSnapshot:
     liquidity_usd: float
     market_cap: float
     fdv: float
+    holders_count: int | None
+    holders_source: str | None
     pair_created_at_ms: int | None
     raw: dict[str, Any] = field(default_factory=dict)
 
@@ -99,6 +110,8 @@ class PairSnapshot:
             liquidity_usd=_as_float(liquidity.get("usd")),
             market_cap=_as_float(payload.get("marketCap")),
             fdv=_as_float(payload.get("fdv")),
+            holders_count=_as_int_or_none(payload.get("holdersCount")),
+            holders_source=(str(payload.get("holdersSource", "")).strip() or None),
             pair_created_at_ms=payload.get("pairCreatedAt"),
             raw=payload,
         )
