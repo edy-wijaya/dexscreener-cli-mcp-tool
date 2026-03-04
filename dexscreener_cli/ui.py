@@ -99,6 +99,14 @@ def _risk_style(risk_score: float) -> str:
     return "bold bright_red"
 
 
+def _risk_badge(risk_score: float) -> Text:
+    if risk_score >= 75:
+        return Text(f"SAFE {risk_score:.0f}", style="bold bright_green")
+    if risk_score >= 55:
+        return Text(f"WATCH {risk_score:.0f}", style="bold yellow")
+    return Text(f"HIGH {risk_score:.0f}", style="bold bright_red")
+
+
 def _flow_meter(buys: int, sells: int, width: int = 12) -> Text:
     total = max(buys + sells, 1)
     buy_ratio = max(0.0, min(1.0, buys / total))
@@ -187,15 +195,18 @@ def render_hot_table(
 ) -> Table:
     compact_level = _compact_level()
     compact = compact_level >= 1
+    title = (
+        f"[bold bright_white]Hot Runner Scan[/bold bright_white]  "
+        f"[cyan]chains={','.join(chains)}[/cyan]  "
+        f"[yellow]top={limit}[/yellow]  "
+        f"[green]liq>={fmt_usd(min_liquidity_usd)}[/green]  "
+        f"[green]vol24>={fmt_usd(min_volume_h24_usd)}[/green]  "
+        f"[magenta]tx1h>={min_txns_h1}[/magenta]"
+    )
+    if compact:
+        title = f"[bold bright_white]Hot Runner Scan[/bold bright_white] [cyan]{','.join(chains)}[/cyan]"
     table = Table(
-        title=(
-            f"[bold bright_white]Hot Runner Scan[/bold bright_white]  "
-            f"[cyan]chains={','.join(chains)}[/cyan]  "
-            f"[yellow]top={limit}[/yellow]  "
-            f"[green]liq>={fmt_usd(min_liquidity_usd)}[/green]  "
-            f"[green]vol24>={fmt_usd(min_volume_h24_usd)}[/green]  "
-            f"[magenta]tx1h>={min_txns_h1}[/magenta]"
-        ),
+        title=title,
         box=box.ROUNDED,
         header_style="bold bright_white",
         show_edge=True,
@@ -239,7 +250,7 @@ def render_hot_table(
             Text(fmt_usd(p.volume_h24), style=vol_style),
             str(p.txns_h1),
             Text(fmt_usd(p.liquidity_usd), style=liq_style),
-            Text(f"{candidate.analytics.risk_score:.0f}", style=_risk_style(candidate.analytics.risk_score)),
+            _risk_badge(candidate.analytics.risk_score),
             *((
                 fmt_price(p.price_usd),
                 fmt_usd(p.market_cap if p.market_cap > 0 else p.fdv),
@@ -310,18 +321,24 @@ def render_new_runners_table(
     selected_index: int | None = None,
 ) -> Table:
     compact_level = _compact_level()
+    show_chain = len({c.pair.chain_id for c in candidates}) > 1
+    title = (
+        f"[bold bright_white]Best New Runners[/bold bright_white]  "
+        f"[cyan]chain={chain}[/cyan]  "
+        f"[yellow]top={limit}[/yellow]  "
+        f"[magenta]age<={max_age_hours:.0f}h[/magenta]"
+    )
+    if compact_level >= 1:
+        title = f"[bold bright_white]Best New Runners[/bold bright_white] [cyan]{chain}[/cyan]"
     table = Table(
-        title=(
-            f"[bold bright_white]Best New Runners[/bold bright_white]  "
-            f"[cyan]chain={chain}[/cyan]  "
-            f"[yellow]top={limit}[/yellow]  "
-            f"[magenta]age<={max_age_hours:.0f}h[/magenta]"
-        ),
+        title=title,
         box=box.ROUNDED,
         header_style="bold bright_white",
         row_styles=["none", "dim"],
     )
     table.add_column("#", justify="right")
+    if show_chain:
+        table.add_column("Ch")
     table.add_column("Token", style="bold yellow")
     if compact_level == 0:
         table.add_column("Score", justify="right")
@@ -348,11 +365,13 @@ def render_new_runners_table(
         age = Text(_age_label(p.age_hours), style="bright_cyan" if p.age_hours is not None and p.age_hours < 24 else "white")
         rs_style = "bold bright_green" if a.relative_strength >= 8 else "bold bright_red" if a.relative_strength <= -8 else "white"
         readiness_style = "bold bright_green" if a.breakout_readiness >= 70 else "yellow" if a.breakout_readiness >= 55 else "dim"
-        table.add_row(
-            *(
-                (
-                    str(i),
-                    Text(_safe_text(p.base_symbol), style=token_style),
+        row: list[object] = [str(i)]
+        if show_chain:
+            row.append(_chain_text(p.chain_id))
+        row.append(Text(_safe_text(p.base_symbol), style=token_style))
+        if compact_level == 0:
+            row.extend(
+                [
                     score,
                     Text(f"{a.breakout_readiness:.0f}", style=readiness_style),
                     Text(f"{a.relative_strength:+.1f}", style=rs_style),
@@ -361,40 +380,37 @@ def render_new_runners_table(
                     fmt_usd(p.volume_h24),
                     str(p.txns_h1),
                     fmt_usd(p.liquidity_usd),
-                    Text(f"{a.risk_score:.0f}", style=_risk_style(a.risk_score)),
+                    _risk_badge(a.risk_score),
                     _pulse_meter(p),
                     _flow_meter(p.buys_h1, p.sells_h1),
-                )
-                if compact_level == 0
-                else (
-                    str(i),
-                    Text(_safe_text(p.base_symbol), style=token_style),
+                ]
+            )
+        elif compact_level == 1:
+            row.extend(
+                [
                     age,
                     Text(fmt_pct(p.price_change_h1), style=_pct_style(p.price_change_h1)),
                     fmt_usd(p.volume_h24),
                     str(p.txns_h1),
                     fmt_usd(p.liquidity_usd),
-                    Text(f"{a.risk_score:.0f}", style=_risk_style(a.risk_score)),
-                )
-                if compact_level == 1
-                else (
-                    str(i),
-                    Text(_safe_text(p.base_symbol), style=token_style),
+                    _risk_badge(a.risk_score),
+                ]
+            )
+        else:
+            row.extend(
+                [
                     Text(fmt_pct(p.price_change_h1), style=_pct_style(p.price_change_h1)),
                     fmt_usd(p.volume_h24),
                     str(p.txns_h1),
                     fmt_usd(p.liquidity_usd),
-                    Text(f"{a.risk_score:.0f}", style=_risk_style(a.risk_score)),
-                )
+                    _risk_badge(a.risk_score),
+                ]
             )
-        )
+        table.add_row(*row)
     if not candidates:
-        if compact_level == 0:
-            table.add_row("-", "No fresh runners found", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-")
-        elif compact_level == 1:
-            table.add_row("-", "No fresh runners found", "-", "-", "-", "-", "-", "-")
-        else:
-            table.add_row("-", "No fresh runners found", "-", "-", "-", "-", "-")
+        fallback = ["-"] * len(table.columns)
+        fallback[2 if show_chain else 1] = "No fresh runners found"
+        table.add_row(*fallback)
     return table
 
 
@@ -468,6 +484,7 @@ def render_rank_movers_table(
     limit: int,
 ) -> Table:
     compact_level = _compact_level()
+    show_chain = len({c.pair.chain_id for c in candidates}) > 1
     table = Table(
         title="[bold bright_white]Rank Movers[/bold bright_white]",
         box=box.ROUNDED,
@@ -476,6 +493,8 @@ def render_rank_movers_table(
     )
     table.add_column("Rank", justify="right")
     table.add_column("Move", justify="right")
+    if show_chain:
+        table.add_column("Ch")
     table.add_column("Token", style="bold yellow")
     if compact_level == 0:
         table.add_column("Score", justify="right")
@@ -489,40 +508,42 @@ def render_rank_movers_table(
 
     for rank, candidate in enumerate(candidates[:limit], start=1):
         p = candidate.pair
-        table.add_row(
-            *(
-                (
-                    str(rank),
-                    _move_text(key=candidate.key, rank=rank, previous_ranks=previous_ranks),
-                    _safe_text(p.base_symbol),
+        row: list[object] = [
+            str(rank),
+            _move_text(key=candidate.key, rank=rank, previous_ranks=previous_ranks),
+        ]
+        if show_chain:
+            row.append(_chain_text(p.chain_id))
+        row.append(_safe_text(p.base_symbol))
+        if compact_level == 0:
+            row.extend(
+                [
                     Text(f"{candidate.score:.1f}", style=_score_style(candidate.score)),
                     Text(f"{candidate.analytics.breakout_readiness:.0f}", style="bright_magenta"),
                     Text(f"{candidate.analytics.relative_strength:+.1f}", style="white"),
                     Text(fmt_pct(p.price_change_h1), style=_pct_style(p.price_change_h1)),
                     fmt_usd(p.volume_h1),
                     str(p.txns_h1),
-                    Text(f"{candidate.analytics.risk_score:.0f}", style=_risk_style(candidate.analytics.risk_score)),
+                    _risk_badge(candidate.analytics.risk_score),
                     _age_label(p.age_hours),
-                )
-                if compact_level == 0
-                else (
-                    str(rank),
-                    _move_text(key=candidate.key, rank=rank, previous_ranks=previous_ranks),
-                    _safe_text(p.base_symbol),
+                ]
+            )
+        else:
+            row.extend(
+                [
                     Text(fmt_pct(p.price_change_h1), style=_pct_style(p.price_change_h1)),
                     fmt_usd(p.volume_h1),
                     str(p.txns_h1),
-                    Text(f"{candidate.analytics.risk_score:.0f}", style=_risk_style(candidate.analytics.risk_score)),
+                    _risk_badge(candidate.analytics.risk_score),
                     _age_label(p.age_hours),
-                )
+                ]
             )
-        )
+        table.add_row(*row)
 
     if not candidates:
-        if compact_level == 0:
-            table.add_row("-", "-", "No movers yet", "-", "-", "-", "-", "-", "-", "-", "-")
-        else:
-            table.add_row("-", "-", "No movers yet", "-", "-", "-", "-", "-")
+        fallback = ["-"] * len(table.columns)
+        fallback[3 if show_chain else 2] = "No movers yet"
+        table.add_row(*fallback)
     return table
 
 
