@@ -5,6 +5,8 @@ from collections import deque
 from datetime import UTC, datetime
 import json
 from pathlib import Path
+import shutil
+import sys
 from typing import Annotated, Any
 
 import typer
@@ -19,14 +21,17 @@ from rich.text import Text
 from .alerts import send_alerts, send_test_alert
 from .client import DexScreenerClient
 from .config import DEFAULT_CHAINS, ScanFilters
+from .holders import hydrate_token_rows_with_holders
 from .models import HotTokenCandidate, PairSnapshot
 from .scanner import HotScanner
 from .state import ScanPreset, ScanTask, StateStore, utc_now_iso
 from .task_runner import execute_task_once, select_due_tasks, task_filters as runner_task_filters
 from .ui import (
     build_header,
+    fmt_holders,
     fmt_pct,
     fmt_usd,
+    holders_text,
     render_chain_heat_table,
     render_distribution_panel,
     render_flow_panel,
@@ -172,6 +177,12 @@ def _pct_or_na(value: float, *, txns_h1: int) -> Text:
     return _pct_text(value)
 
 
+def _terminal_width(default: int = 110) -> int:
+    if not sys.stdout.isatty():
+        return shutil.get_terminal_size((default, 40)).columns
+    return shutil.get_terminal_size((140, 40)).columns
+
+
 def _ai_rows_json(rows: list[dict[str, object]]) -> str:
     return json.dumps(rows, indent=2, ensure_ascii=True)
 
@@ -227,6 +238,8 @@ def _candidate_json(c: HotTokenCandidate) -> dict[str, object]:
         "liquidityUsd": p.liquidity_usd,
         "marketCap": p.market_cap,
         "fdv": p.fdv,
+        "holdersCount": p.holders_count,
+        "holdersSource": p.holders_source,
         "boostTotal": c.boost_total,
         "boostCount": c.boost_count,
         "hasProfile": c.has_profile,
@@ -244,9 +257,6 @@ def _candidate_json(c: HotTokenCandidate) -> dict[str, object]:
             "momentumDecayRatio": a.momentum_decay_ratio,
             "fastDecay": a.fast_decay,
             "baseScore": a.base_score,
-            "riskScore": a.risk_score,
-            "riskPenalty": a.risk_penalty,
-            "riskFlags": a.risk_flags,
             "scoreComponents": a.score_components,
         },
     }
@@ -495,6 +505,8 @@ async def _scan_ai_tokens(
                 "liquidityUsd": liq,
                 "txnsH1": tx1h,
                 "pairUrl": str(p.get("url", "")),
+                "holdersCount": None,
+                "holdersSource": None,
             }
         )
 
@@ -506,7 +518,9 @@ async def _scan_ai_tokens(
         ),
         reverse=True,
     )
-    return rows[:limit]
+    top_rows = rows[:limit]
+    await hydrate_token_rows_with_holders(top_rows, max_rows=limit)
+    return top_rows
 
 
 async def _scan_new_launches(
@@ -582,6 +596,8 @@ async def _scan_new_launches(
                 "ageHours": age_hours,
                 "dexId": pair.dex_id,
                 "pairUrl": pair.pair_url,
+                "holdersCount": pair.holders_count,
+                "holdersSource": pair.holders_source,
             }
         )
 
@@ -594,7 +610,9 @@ async def _scan_new_launches(
         ),
         reverse=True,
     )
-    return rows[:limit]
+    top_rows = rows[:limit]
+    await hydrate_token_rows_with_holders(top_rows, max_rows=limit)
+    return top_rows
 
 
 def _render_scan_board(candidates: list[HotTokenCandidate], filters: ScanFilters) -> None:
@@ -620,6 +638,7 @@ def _render_ai_board(
     min_volume_h24_usd: float,
     min_txns_h1: int,
 ) -> None:
+    compact = _terminal_width() < 140
     table = Table(
         title=(
             f"[bold bright_white]Top AI Tokens[/bold bright_white]  "
@@ -634,13 +653,15 @@ def _render_ai_board(
     )
     table.add_column("#", justify="right")
     table.add_column("Token", style="bold yellow")
-    table.add_column("Price", justify="right")
     table.add_column("1h", justify="right")
-    table.add_column("24h", justify="right")
     table.add_column("24h Vol", justify="right")
     table.add_column("1h Txns", justify="right")
     table.add_column("Liquidity", justify="right")
-    table.add_column("Dex")
+    table.add_column("Holders", justify="right")
+    if not compact:
+        table.add_column("Price", justify="right")
+        table.add_column("24h", justify="right")
+        table.add_column("Dex")
 
     for i, row in enumerate(rows, start=1):
         symbol = str(row.get("symbol", "?"))
@@ -650,23 +671,29 @@ def _render_ai_board(
         vol24 = _as_float(row.get("volumeH24"))
         tx1h = _as_int(row.get("txnsH1"))
         liq = _as_float(row.get("liquidityUsd"))
+        holders_count = _as_int(row.get("holdersCount"), -1)
         dex = str(row.get("dexId", ""))
         table.add_row(
             str(i),
             symbol,
-            f"${price:,.8f}" if price < 0.01 else f"${price:,.6f}",
             _pct_or_na(h1, txns_h1=tx1h),
-            _pct_text(h24),
             Text(fmt_usd(vol24), style="bright_cyan" if vol24 >= 100_000 else "cyan"),
             str(tx1h),
             Text(fmt_usd(liq), style="green" if liq >= 50_000 else "yellow"),
-            dex,
+            holders_text(holders_count if holders_count >= 0 else None),
+            *((f"${price:,.8f}" if price < 0.01 else f"${price:,.6f}", _pct_text(h24), dex) if not compact else ()),
         )
     if not rows:
-        table.add_row("-", "No AI tokens matched filters", "-", "-", "-", "-", "-", "-", "-")
+        if compact:
+            table.add_row("-", "No AI tokens matched filters", "-", "-", "-", "-", "-")
+        else:
+            table.add_row("-", "No AI tokens matched filters", "-", "-", "-", "-", "-", "-", "-", "-")
 
     total_vol = sum(_as_float(r.get("volumeH24")) for r in rows)
     total_liq = sum(_as_float(r.get("liquidityUsd")) for r in rows)
+    known_holders = [_as_int(r.get("holdersCount"), -1) for r in rows]
+    known_holders = [h for h in known_holders if h >= 0]
+    holder_hint = fmt_holders(int(sum(known_holders) / len(known_holders))) if known_holders else "n/a"
     avg_h1 = (
         sum(_as_float(r.get("priceChangeH1")) for r in rows) / len(rows)
         if rows
@@ -677,6 +704,7 @@ def _render_ai_board(
             f"Rows: {len(rows)}\n"
             f"24h volume sum: {fmt_usd(total_vol)}\n"
             f"Liquidity sum: {fmt_usd(total_liq)}\n"
+            f"Avg holders: {holder_hint}\n"
             f"Average 1h move: {fmt_pct(avg_h1)}"
         ),
         title="[bold bright_white]AI Market Snapshot[/bold bright_white]",
@@ -698,6 +726,7 @@ def _render_new_launches_board(
     min_txns_h1: int,
     min_txns_h24: int,
 ) -> None:
+    compact = _terminal_width() < 145
     table = Table(
         title=(
             f"[bold bright_white]Top New Coins[/bold bright_white]  "
@@ -715,14 +744,16 @@ def _render_new_launches_board(
     table.add_column("#", justify="right")
     table.add_column("Token", style="bold yellow")
     table.add_column("Age", justify="right")
-    table.add_column("Price", justify="right")
     table.add_column("1h", justify="right")
-    table.add_column("24h", justify="right")
     table.add_column("24h Vol", justify="right")
     table.add_column("1h Txns", justify="right")
-    table.add_column("24h Txns", justify="right")
     table.add_column("Liquidity", justify="right")
-    table.add_column("Dex")
+    table.add_column("Holders", justify="right")
+    if not compact:
+        table.add_column("Price", justify="right")
+        table.add_column("24h", justify="right")
+        table.add_column("24h Txns", justify="right")
+        table.add_column("Dex")
 
     for idx, row in enumerate(rows, start=1):
         symbol = str(row.get("symbol", "?"))
@@ -733,31 +764,37 @@ def _render_new_launches_board(
         tx1h = _as_int(row.get("txnsH1"))
         tx24h = _as_int(row.get("txnsH24"))
         liq = _as_float(row.get("liquidityUsd"))
+        holders_count = _as_int(row.get("holdersCount"), -1)
         table.add_row(
             str(idx),
             symbol,
             Text(f"{age_hours:.1f}h", style=age_style),
-            Text(f"${price:,.8f}" if price < 0.01 else f"${price:,.6f}", style="white"),
             _pct_or_na(_as_float(row.get("priceChangeH1")), txns_h1=tx1h),
-            _pct_text(_as_float(row.get("priceChangeH24"))),
             Text(fmt_usd(vol24), style="bright_cyan" if vol24 >= 100_000 else "cyan"),
             Text(str(tx1h), style="bright_white" if tx1h >= 100 else "white"),
-            Text(str(tx24h), style="bright_white" if tx24h >= 250 else "white"),
             Text(fmt_usd(liq), style="green" if liq >= 50_000 else "yellow" if liq >= 10_000 else "red"),
-            str(row.get("dexId", "")),
+            holders_text(holders_count if holders_count >= 0 else None),
+            *((Text(f"${price:,.8f}" if price < 0.01 else f"${price:,.6f}", style="white"), _pct_text(_as_float(row.get("priceChangeH24"))), Text(str(tx24h), style="bright_white" if tx24h >= 250 else "white"), str(row.get("dexId", ""))) if not compact else ()),
         )
 
     if not rows:
-        table.add_row("-", "No new coins matched filters", "-", "-", "-", "-", "-", "-", "-", "-", "-")
+        if compact:
+            table.add_row("-", "No new coins matched filters", "-", "-", "-", "-", "-", "-")
+        else:
+            table.add_row("-", "No new coins matched filters", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-")
 
     total_vol = sum(_as_float(r.get("volumeH24")) for r in rows)
     total_liq = sum(_as_float(r.get("liquidityUsd")) for r in rows)
+    known_holders = [_as_int(r.get("holdersCount"), -1) for r in rows]
+    known_holders = [h for h in known_holders if h >= 0]
+    holder_hint = fmt_holders(int(sum(known_holders) / len(known_holders))) if known_holders else "n/a"
     avg_age = sum(_as_float(r.get("ageHours")) for r in rows) / len(rows) if rows else 0.0
     summary = Panel(
         Text(
             f"Rows: {len(rows)}\n"
             f"24h volume sum: {fmt_usd(total_vol)}\n"
             f"Liquidity sum: {fmt_usd(total_liq)}\n"
+            f"Avg holders: {holder_hint}\n"
             f"Average age: {avg_age:.1f}h"
         ),
         title="[bold bright_white]New Coin Snapshot[/bold bright_white]",
@@ -1589,7 +1626,10 @@ def why() -> None:
                 "/latest/dex/pairs/{chainId}/{pairId}",
                 "/token-pairs/v1/{chainId}/{tokenAddress}",
             ],
-            "holder_distribution": "Not exposed by public Dexscreener API endpoints.",
+            "holders": {
+                "dexscreener_public_api": "No direct holder count endpoint.",
+                "adapter": "honeypot.is totalHolders (EVM chains only)",
+            },
         },
     }
     console.print(json.dumps(payload, indent=2))

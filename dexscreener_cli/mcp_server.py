@@ -42,6 +42,8 @@ def _serialize_candidate(candidate: HotTokenCandidate) -> dict[str, Any]:
         "liquidityUsd": pair.liquidity_usd,
         "marketCap": pair.market_cap,
         "fdv": pair.fdv,
+        "holdersCount": pair.holders_count,
+        "holdersSource": pair.holders_source,
         "ageHours": pair.age_hours,
         "boostTotal": candidate.boost_total,
         "boostCount": candidate.boost_count,
@@ -61,9 +63,6 @@ def _serialize_candidate(candidate: HotTokenCandidate) -> dict[str, Any]:
             "momentumDecayRatio": analytics.momentum_decay_ratio,
             "fastDecay": analytics.fast_decay,
             "baseScore": analytics.base_score,
-            "riskScore": analytics.risk_score,
-            "riskPenalty": analytics.risk_penalty,
-            "riskFlags": analytics.risk_flags,
             "scoreComponents": analytics.score_components,
         },
     }
@@ -477,7 +476,10 @@ async def inspect_token(chain_id: str, token_address: str) -> dict[str, Any]:
                 "priceChangeH24": best.price_change_h24,
             },
             "distributionProxy": build_distribution_heuristics(candidate),
-            "note": "Public Dexscreener API does not expose holder-level distribution directly.",
+            "note": (
+                "Dexscreener public API does not expose holder-level ownership tables. "
+                "Use holdersCount/holdersSource when available."
+            ),
             "additionalPairCount": max(len(pairs) - 1, 0),
         }
 
@@ -503,7 +505,7 @@ async def resource_tasks() -> dict[str, Any]:
 def prompt_alpha_scan_plan(
     chains: str = "base,solana",
     profile: str = "balanced",
-    objective: str = "Spot high-quality new runners with manageable risk",
+    objective: str = "Spot high-quality new runners with strong flow and participation",
 ) -> str:
     selected_profile = profile if profile in SCAN_PROFILE_NAMES else "balanced"
     baseline = SCAN_PROFILE_BASELINES[selected_profile]
@@ -520,7 +522,7 @@ def prompt_alpha_scan_plan(
         "1) exact CLI commands,\n"
         "2) alert setup recommendation,\n"
         "3) fallback profile if no rows are found,\n"
-        "4) operational risk checklist."
+        "4) operational execution checklist."
     )
 
 
@@ -529,14 +531,15 @@ def prompt_runner_triage(
     token_symbol: str,
     chain_id: str,
     score: float,
-    risk_score: float,
+    holders_count: int | None,
     volume_h24: float,
     liquidity_usd: float,
 ) -> str:
+    holders_label = str(holders_count) if holders_count is not None else "n/a"
     return (
         "Triage this candidate for short-term momentum trading.\n"
         f"Token: {chain_id}:{token_symbol}\n"
-        f"score={score:.2f}, risk_score={risk_score:.2f}, "
+        f"score={score:.2f}, holders={holders_label}, "
         f"volume_h24={volume_h24:.0f}, liquidity_usd={liquidity_usd:.0f}\n"
         "Provide:\n"
         "1) quality verdict (A/B/C),\n"
