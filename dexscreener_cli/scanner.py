@@ -10,7 +10,7 @@ from typing import Any
 from .client import DexScreenerClient
 from .config import ScanFilters
 from .models import CandidateAnalytics, HotTokenCandidate, PairSnapshot
-from .scoring import score_hotness
+from .scoring import score_hotness_detail
 
 
 @dataclass(slots=True)
@@ -40,6 +40,46 @@ class HotScanner:
         if pair.txns_h1 <= 0:
             return 0.0
         return (pair.buys_h1 - pair.sells_h1) / pair.txns_h1
+
+    @staticmethod
+    def _risk_profile(pair: PairSnapshot) -> tuple[float, float, list[str]]:
+        risk_score = 100.0
+        flags: list[str] = []
+
+        vol_liq = pair.volume_h24 / max(pair.liquidity_usd, 1.0)
+        if pair.liquidity_usd < 20_000:
+            risk_score -= 18.0
+            flags.append("low-liquidity")
+        if vol_liq >= 80:
+            risk_score -= 12.0
+            flags.append("high-turnover")
+        if vol_liq >= 140:
+            risk_score -= 24.0
+            flags.append("thin-exit")
+
+        mcap = pair.market_cap if pair.market_cap > 0 else pair.fdv
+        if mcap > 0:
+            liq_to_cap = pair.liquidity_usd / mcap
+            if liq_to_cap < 0.02:
+                risk_score -= 15.0
+                flags.append("concentration-risk")
+
+        if pair.txns_h1 <= 2 and pair.volume_h24 >= 100_000:
+            risk_score -= 20.0
+            flags.append("low-participant-flow")
+
+        if pair.price_change_h1 >= 140 and pair.txns_h1 < 50:
+            risk_score -= 12.0
+            flags.append("blowoff-risk")
+
+        if pair.buys_h1 >= 20 and pair.sells_h1 == 0:
+            risk_score -= 18.0
+            flags.append("one-way-flow")
+
+        risk_score = max(0.0, min(100.0, risk_score))
+        # Penalize unsafe runners while still letting high-quality names surface.
+        risk_penalty = max(0.0, (65.0 - risk_score) * 0.28)
+        return risk_score, risk_penalty, flags
 
     @staticmethod
     def _velocity_components(pair: PairSnapshot) -> tuple[float, float]:
@@ -138,10 +178,13 @@ class HotScanner:
         for candidate in candidates:
             pair = candidate.pair
             key = candidate.key
+            base_score = candidate.score
+            score_components = dict(candidate.analytics.score_components)
             buy_pressure, volume_velocity, txn_velocity, compression_score, breakout_readiness = metrics[key]
             baseline_h1 = chain_baseline_h1.get(pair.chain_id, 0.0)
             baseline_velocity = chain_baseline_velocity.get(pair.chain_id, 1.0)
             relative_strength = (pair.price_change_h1 - baseline_h1) + ((volume_velocity - baseline_velocity) * 5.0)
+            risk_score, risk_penalty, risk_flags = self._risk_profile(pair)
 
             boost_velocity = self._boost_velocity(key, candidate.boost_total, now_s)
             half_life_min, decay_ratio, fast_decay = self._momentum_metrics(key, pair.price_change_h1, now_s)
@@ -156,12 +199,18 @@ class HotScanner:
                 momentum_half_life_min=round(half_life_min, 2) if half_life_min is not None else None,
                 momentum_decay_ratio=round(decay_ratio, 3) if decay_ratio is not None else None,
                 fast_decay=fast_decay,
+                base_score=round(base_score, 2),
+                risk_score=round(risk_score, 2),
+                risk_penalty=round(risk_penalty, 2),
+                risk_flags=list(dict.fromkeys(risk_flags)),
+                score_components=score_components,
             )
 
             adjusted = candidate.score
             adjusted += (breakout_readiness - 50.0) * 0.08
             adjusted += self._clip(relative_strength, -25.0, 25.0) * 0.15
             adjusted += self._clip(boost_velocity, -10.0, 10.0) * 0.2
+            adjusted -= risk_penalty
             if fast_decay:
                 adjusted -= 12.0
             candidate.score = round(max(0.0, adjusted), 2)
@@ -183,6 +232,11 @@ class HotScanner:
                 tags.append("momentum-decay")
             elif half_life_min is not None and half_life_min >= 25 and (decay_ratio or 0.0) > 0.65:
                 tags.append("momentum-persistent")
+            if risk_score <= 35:
+                tags.append("risk-high")
+            elif risk_score <= 55:
+                tags.append("risk-elevated")
+            tags.extend(f"risk:{flag}" for flag in risk_flags[:2])
             # keep stable order while dropping duplicates
             candidate.tags = list(dict.fromkeys(tags))
 
@@ -430,12 +484,13 @@ class HotScanner:
                     return
                 if not self._passes_filters(pair, filters):
                     return
-                score, tags = score_hotness(
+                score, tags, components = score_hotness_detail(
                     pair=pair,
                     boost_total=seed.boost_total,
                     boost_count=seed.boost_count,
                     has_profile=seed.has_profile,
                 )
+                analytics = CandidateAnalytics(base_score=score, score_components=components)
                 results.append(
                     HotTokenCandidate(
                         pair=pair,
@@ -445,6 +500,7 @@ class HotScanner:
                         has_profile=seed.has_profile,
                         discovery=seed.discovery,
                         tags=tags,
+                        analytics=analytics,
                     )
                 )
 

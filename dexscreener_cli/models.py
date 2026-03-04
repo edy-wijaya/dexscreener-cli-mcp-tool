@@ -116,6 +116,11 @@ class CandidateAnalytics:
     momentum_half_life_min: float | None = None
     momentum_decay_ratio: float | None = None
     fast_decay: bool = False
+    base_score: float = 0.0
+    risk_score: float = 50.0
+    risk_penalty: float = 0.0
+    risk_flags: list[str] = field(default_factory=list)
+    score_components: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

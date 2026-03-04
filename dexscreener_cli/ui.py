@@ -89,6 +89,14 @@ def _score_style(score: float) -> str:
     return "bold white"
 
 
+def _risk_style(risk_score: float) -> str:
+    if risk_score >= 75:
+        return "bold bright_green"
+    if risk_score >= 55:
+        return "yellow"
+    return "bold bright_red"
+
+
 def _flow_meter(buys: int, sells: int, width: int = 12) -> Text:
     total = max(buys + sells, 1)
     buy_ratio = max(0.0, min(1.0, buys / total))
@@ -177,6 +185,7 @@ def render_hot_table(
     table.add_column("Liquidity", justify="right")
     table.add_column("MCap", justify="right")
     table.add_column("Boost", justify="right")
+    table.add_column("Risk", justify="right")
     table.add_column("Flow", no_wrap=True)
     table.add_column("Age", justify="right")
     table.add_column("Signal")
@@ -206,12 +215,13 @@ def render_hot_table(
             Text(fmt_usd(p.liquidity_usd), style=liq_style),
             fmt_usd(p.market_cap if p.market_cap > 0 else p.fdv),
             boost,
+            Text(f"{candidate.analytics.risk_score:.0f}", style=_risk_style(candidate.analytics.risk_score)),
             _flow_meter(p.buys_h1, p.sells_h1),
             Text(age, style=age_style),
             signal_text,
         )
     if not candidates:
-        table.add_row("-", "-", "No candidates matched current filters", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-")
+        table.add_row("-", "-", "No candidates matched current filters", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-")
     return table
 
 
@@ -287,6 +297,7 @@ def render_new_runners_table(
     table.add_column("24h Vol", justify="right")
     table.add_column("Tx1h", justify="right")
     table.add_column("Liq", justify="right")
+    table.add_column("Risk", justify="right")
     table.add_column("Age", justify="right")
     table.add_column("Pulse", justify="right")
     table.add_column("Flow", no_wrap=True)
@@ -311,6 +322,7 @@ def render_new_runners_table(
             fmt_usd(p.volume_h24),
             str(p.txns_h1),
             fmt_usd(p.liquidity_usd),
+            Text(f"{a.risk_score:.0f}", style=_risk_style(a.risk_score)),
             age,
             _pulse_meter(p),
             _flow_meter(p.buys_h1, p.sells_h1),
@@ -319,6 +331,7 @@ def render_new_runners_table(
         table.add_row(
             "-",
             "No fresh runners found",
+            "-",
             "-",
             "-",
             "-",
@@ -348,6 +361,8 @@ def render_top_runner_cards(candidates: list[HotTokenCandidate], *, pulse: bool 
             txt.append(f"{candidate.analytics.breakout_readiness:.0f}\n", style="bright_magenta")
             txt.append("RS: ", style="dim")
             txt.append(f"{candidate.analytics.relative_strength:+.1f}\n", style="white")
+            txt.append("Risk: ", style="dim")
+            txt.append(f"{candidate.analytics.risk_score:.0f}\n", style=_risk_style(candidate.analytics.risk_score))
             txt.append("1h: ", style="dim")
             txt.append(f"{fmt_pct(p.price_change_h1)}\n", style=_pct_style(p.price_change_h1))
             txt.append("24h Vol: ", style="dim")
@@ -415,6 +430,7 @@ def render_rank_movers_table(
     table.add_column("1h", justify="right")
     table.add_column("Vol1h", justify="right")
     table.add_column("Tx1h", justify="right")
+    table.add_column("Risk", justify="right")
     table.add_column("Age", justify="right")
 
     for rank, candidate in enumerate(candidates[:limit], start=1):
@@ -429,11 +445,12 @@ def render_rank_movers_table(
             Text(fmt_pct(p.price_change_h1), style=_pct_style(p.price_change_h1)),
             fmt_usd(p.volume_h1),
             str(p.txns_h1),
+            Text(f"{candidate.analytics.risk_score:.0f}", style=_risk_style(candidate.analytics.risk_score)),
             _age_label(p.age_hours),
         )
 
     if not candidates:
-        table.add_row("-", "-", "No movers yet", "-", "-", "-", "-", "-", "-", "-")
+        table.add_row("-", "-", "No movers yet", "-", "-", "-", "-", "-", "-", "-", "-")
     return table
 
 

@@ -15,6 +15,21 @@ def score_hotness(
     boost_count: int = 0,
     has_profile: bool = False,
 ) -> tuple[float, list[str]]:
+    score, tags, _ = score_hotness_detail(
+        pair=pair,
+        boost_total=boost_total,
+        boost_count=boost_count,
+        has_profile=has_profile,
+    )
+    return score, tags
+
+
+def score_hotness_detail(
+    pair: PairSnapshot,
+    boost_total: float = 0.0,
+    boost_count: int = 0,
+    has_profile: bool = False,
+) -> tuple[float, list[str], dict[str, float]]:
     vol_component = _clip(log1p(pair.volume_h24) / log1p(7_500_000.0), 0.0, 1.0)
     txn_component = _clip(log1p(pair.txns_h1) / log1p(4_000.0), 0.0, 1.0)
     liq_component = _clip(log1p(pair.liquidity_usd) / log1p(3_000_000.0), 0.0, 1.0)
@@ -67,7 +82,18 @@ def score_hotness(
     if has_profile:
         tags.append("listed-profile")
 
-    return round(score, 2), tags
+    weighted_components = {
+        "volume": round(vol_component * 30.0, 3),
+        "transactions": round(txn_component * 20.0, 3),
+        "liquidity": round(liq_component * 18.0, 3),
+        "momentum": round(momentum_component * 12.0, 3),
+        "flow": round(pressure_component * 8.0, 3),
+        "boost": round(boost_component * 7.0, 3),
+        "recency": round(recency_component * 3.0, 3),
+        "profile": round(profile_component * 2.0, 3),
+    }
+
+    return round(score, 2), tags, weighted_components
 
 
 def build_distribution_heuristics(candidate: HotTokenCandidate) -> dict[str, float | str]:

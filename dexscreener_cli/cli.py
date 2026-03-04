@@ -198,6 +198,11 @@ def _candidate_json(c: HotTokenCandidate) -> dict[str, object]:
             "momentumHalfLifeMin": a.momentum_half_life_min,
             "momentumDecayRatio": a.momentum_decay_ratio,
             "fastDecay": a.fast_decay,
+            "baseScore": a.base_score,
+            "riskScore": a.risk_score,
+            "riskPenalty": a.risk_penalty,
+            "riskFlags": a.risk_flags,
+            "scoreComponents": a.score_components,
         },
     }
 

@@ -18,6 +18,7 @@ mcp = FastMCP("dexscreener-cli-mcp-tool")
 
 def _serialize_candidate(candidate: HotTokenCandidate) -> dict[str, Any]:
     pair = candidate.pair
+    analytics = candidate.analytics
     return {
         "chainId": pair.chain_id,
         "tokenAddress": pair.base_address,
@@ -42,6 +43,23 @@ def _serialize_candidate(candidate: HotTokenCandidate) -> dict[str, Any]:
         "discovery": candidate.discovery,
         "score": candidate.score,
         "tags": candidate.tags,
+        "analytics": {
+            "compressionScore": analytics.compression_score,
+            "breakoutReadiness": analytics.breakout_readiness,
+            "volumeVelocity": analytics.volume_velocity,
+            "txnVelocity": analytics.txn_velocity,
+            "relativeStrength": analytics.relative_strength,
+            "chainBaselineH1": analytics.chain_baseline_h1,
+            "boostVelocityPerMin": analytics.boost_velocity,
+            "momentumHalfLifeMin": analytics.momentum_half_life_min,
+            "momentumDecayRatio": analytics.momentum_decay_ratio,
+            "fastDecay": analytics.fast_decay,
+            "baseScore": analytics.base_score,
+            "riskScore": analytics.risk_score,
+            "riskPenalty": analytics.risk_penalty,
+            "riskFlags": analytics.risk_flags,
+            "scoreComponents": analytics.score_components,
+        },
     }
 
 
