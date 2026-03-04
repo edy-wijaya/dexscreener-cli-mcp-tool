@@ -160,6 +160,27 @@ async def scan_hot_tokens(
 
 
 @mcp.tool()
+async def get_rate_budget_stats(
+    query: str = "solana",
+    chain_id: str = "solana",
+    token_address: str | None = None,
+) -> dict[str, Any]:
+    """Run a lightweight warmup and return runtime rate/budget stats."""
+    async with DexScreenerClient() as client:
+        if query.strip():
+            try:
+                await client.search_pairs(query.strip())
+            except Exception:
+                pass
+        if token_address:
+            try:
+                await client.get_token_pairs(chain_id.strip().lower(), token_address.strip())
+            except Exception:
+                pass
+        return await client.get_runtime_stats()
+
+
+@mcp.tool()
 async def save_preset(
     name: str,
     chains: str = ",".join(DEFAULT_CHAINS),

@@ -1641,6 +1641,58 @@ def profiles(
     console.print(notes)
 
 
+@app.command("rate-stats")
+def rate_stats(
+    query: Annotated[str, typer.Option(help="Optional search query warmup")] = "solana",
+    chain: Annotated[str, typer.Option(help="Chain ID for optional token warmup")] = "solana",
+    token: Annotated[str | None, typer.Option(help="Optional token address warmup")] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Output machine-readable JSON")] = False,
+) -> None:
+    """Show client runtime rate/budget stats for a short warmup run."""
+
+    async def run_stats() -> dict[str, object]:
+        async with DexScreenerClient() as client:
+            if query.strip():
+                try:
+                    await client.search_pairs(query.strip())
+                except Exception:
+                    pass
+            if token:
+                try:
+                    await client.get_token_pairs(chain.lower().strip(), token.strip())
+                except Exception:
+                    pass
+            return await client.get_runtime_stats()
+
+    stats = asyncio.run(run_stats())
+    if as_json:
+        typer.echo(json.dumps(stats, indent=2, ensure_ascii=True))
+        return
+
+    table = Table(
+        title="[bold bright_white]Rate Budget Stats[/bold bright_white]",
+        box=box.ROUNDED,
+        header_style="bold bright_white",
+        row_styles=["none", "dim"],
+    )
+    table.add_column("Metric")
+    table.add_column("Value", justify="right")
+
+    status_counts = stats.get("status_counts", {}) if isinstance(stats, dict) else {}
+    bucket_wait = stats.get("bucket_wait_seconds", {}) if isinstance(stats, dict) else {}
+    penalties = stats.get("bucket_penalty_seconds", {}) if isinstance(stats, dict) else {}
+    table.add_row("requests_total", str(stats.get("requests_total", 0)))
+    table.add_row("cache_hits", str(stats.get("cache_hits", 0)))
+    table.add_row("retries", str(stats.get("retries", 0)))
+    table.add_row("throttled_429", str(stats.get("throttled_429", 0)))
+    table.add_row("errors", str(stats.get("errors", 0)))
+    table.add_row("status_counts", json.dumps(status_counts))
+    table.add_row("bucket_wait_seconds", json.dumps(bucket_wait))
+    table.add_row("bucket_penalty_seconds", json.dumps(penalties))
+    console.print(build_header())
+    console.print(table)
+
+
 @preset_app.command("save")
 def preset_save(
     name: Annotated[str, typer.Argument(help="Preset name")],
