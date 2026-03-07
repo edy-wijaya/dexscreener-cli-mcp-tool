@@ -142,7 +142,25 @@ async def scan_hot_tokens(
     min_txns_h1: int = 80,
     min_price_change_h1: float = 0.0,
 ) -> list[dict[str, Any]]:
-    """Scan hot tokens by chain using Dexscreener boosts/profiles + pair activity scoring."""
+    """Scan and rank the hottest tokens on Dexscreener right now.
+
+    Discovers tokens from Dexscreener boosts and profiles, scores them by volume,
+    liquidity, momentum, and flow pressure, then returns ranked results.
+
+    Use this when a user asks: "what's hot", "show me trending tokens",
+    "find tokens on solana", "what should I look at", etc.
+
+    Args:
+        chains: Comma-separated chain IDs (solana, base, ethereum, bsc, arbitrum).
+        limit: Max number of tokens to return (default 20).
+        min_liquidity_usd: Minimum pair liquidity in USD.
+        min_volume_h24_usd: Minimum 24h trading volume in USD.
+        min_txns_h1: Minimum transactions in the last hour.
+        min_price_change_h1: Minimum 1h price change percent (use negative to allow dips).
+
+    Returns a list of scored token objects with price, volume, liquidity,
+    holder count, score (0-100), tags, and detailed analytics.
+    """
     chain_ids = tuple(c.strip().lower() for c in chains.split(",") if c.strip())
     async with DexScreenerClient() as client:
         scanner = HotScanner(client)
@@ -164,7 +182,11 @@ async def get_rate_budget_stats(
     chain_id: str = "solana",
     token_address: str | None = None,
 ) -> dict[str, Any]:
-    """Run a lightweight warmup and return runtime rate/budget stats."""
+    """Check API rate limit usage and remaining budget.
+
+    Use this to verify API health or debug rate limiting issues.
+    Returns request counts, remaining budget, and timing info.
+    """
     async with DexScreenerClient() as client:
         if query.strip():
             try:
@@ -189,7 +211,12 @@ async def save_preset(
     min_txns_h1: int = 80,
     min_price_change_h1: float = 0.0,
 ) -> dict[str, Any]:
-    """Save a named scan preset."""
+    """Save a named scan preset with custom filter thresholds.
+
+    Presets let you save and reuse filter configurations.
+    Use this when a user says "save these settings", "create a preset", etc.
+    The preset named "default" is auto-loaded on every scan.
+    """
     filters = ScanFilters(
         chains=_parse_chains(chains),
         limit=limit,
@@ -205,7 +232,10 @@ async def save_preset(
 
 @mcp.tool()
 async def list_presets() -> list[dict[str, Any]]:
-    """List saved presets."""
+    """List all saved scan presets with their filter configurations.
+
+    Use this to see what presets are available before scanning.
+    """
     store = StateStore()
     return [p.to_dict() for p in store.list_presets()]
 
@@ -236,7 +266,14 @@ async def create_task(
     webhook_extra: dict[str, Any] | None = None,
     notes: str = "",
 ) -> dict[str, Any]:
-    """Create a new scan task."""
+    """Create a scheduled scan task with optional alert channels.
+
+    Tasks run on a schedule and can send alerts to Discord, Telegram, or webhooks
+    when they find tokens above a score threshold.
+
+    Use this when a user says "set up alerts", "monitor for new tokens",
+    "notify me when something hot appears", etc.
+    """
     store = StateStore()
     overrides: dict[str, Any] = {}
     if chains:
@@ -280,7 +317,10 @@ async def create_task(
 
 @mcp.tool()
 async def list_tasks(status: str | None = None) -> list[dict[str, Any]]:
-    """List scan tasks."""
+    """List all scan tasks and their current status.
+
+    Shows task name, preset, interval, alert config, and status (todo/running/done/blocked).
+    """
     store = StateStore()
     if status and status not in {"todo", "running", "done", "blocked"}:
         return [{"error": "Invalid status. Use todo/running/done/blocked"}]
@@ -290,7 +330,11 @@ async def list_tasks(status: str | None = None) -> list[dict[str, Any]]:
 
 @mcp.tool()
 async def run_task_scan(task: str, fire_alerts: bool = True) -> dict[str, Any]:
-    """Run a saved task scan and return ranked candidates."""
+    """Run a scan task once and return scored token results.
+
+    Executes the task's filters, scores tokens, optionally fires alerts,
+    and records the run. Use this to manually trigger a task scan.
+    """
     store = StateStore()
     row = store.get_task(task)
     if not row:
@@ -326,7 +370,11 @@ async def run_due_tasks(
     default_interval_seconds: int = 120,
     fire_alerts: bool = True,
 ) -> dict[str, Any]:
-    """Run one scheduler cycle for all due non-blocked tasks."""
+    """Run one scheduler cycle - executes all tasks that are due.
+
+    Checks each task's interval and last run time, runs due tasks,
+    fires alerts if thresholds are met, and records results.
+    """
     store = StateStore()
     due = select_due_tasks(
         store=store,
@@ -367,7 +415,11 @@ async def run_due_tasks(
 
 @mcp.tool()
 async def test_task_alert(task: str, with_scan: bool = False) -> dict[str, Any]:
-    """Send a test alert through task-configured channels."""
+    """Send a test alert through a task's configured channels (Discord/Telegram/webhook).
+
+    Use this to verify alert delivery before relying on automated alerts.
+    Set with_scan=True to include real scan data in the test alert.
+    """
     store = StateStore()
     row = store.get_task(task)
     if not row:
@@ -396,21 +448,31 @@ async def test_task_alert(task: str, with_scan: bool = False) -> dict[str, Any]:
 
 @mcp.tool()
 async def list_task_runs(task: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
-    """List task run history."""
+    """List historical task run records with results and timing.
+
+    Shows when each task ran, how many tokens were found, top score, and alert status.
+    """
     store = StateStore()
     return [r.to_dict() for r in store.list_runs(task=task, limit=limit)]
 
 
 @mcp.tool()
 async def export_state_bundle() -> dict[str, Any]:
-    """Export presets/tasks/runs into one JSON-compatible object."""
+    """Export all presets, tasks, and run history as a single JSON bundle.
+
+    Use this for backup, sharing configurations, or migrating to another machine.
+    """
     store = StateStore()
     return store.export_bundle()
 
 
 @mcp.tool()
 async def import_state_bundle(bundle: dict[str, Any], mode: str = "merge") -> dict[str, Any]:
-    """Import presets/tasks/runs from a bundle object."""
+    """Import presets, tasks, and runs from a previously exported bundle.
+
+    Mode 'merge' adds new items without removing existing ones.
+    Mode 'replace' overwrites everything with the bundle contents.
+    """
     if mode not in {"merge", "replace"}:
         return {"error": "Invalid mode. Use merge or replace."}
     store = StateStore()
@@ -420,7 +482,12 @@ async def import_state_bundle(bundle: dict[str, Any], mode: str = "merge") -> di
 
 @mcp.tool()
 async def search_pairs(query: str, limit: int = 20) -> list[dict[str, Any]]:
-    """Search Dexscreener pairs by token name/symbol/address."""
+    """Search for tokens on Dexscreener by name, symbol, or contract address.
+
+    Use this when a user asks "find pepe", "search for <token>",
+    "look up this address", etc. Returns matching pairs with price,
+    volume, liquidity, and pair URL.
+    """
     async with DexScreenerClient() as client:
         scanner = HotScanner(client)
         pairs = await scanner.search(query=query, limit=limit)
@@ -443,7 +510,12 @@ async def search_pairs(query: str, limit: int = 20) -> list[dict[str, Any]]:
 
 @mcp.tool()
 async def inspect_token(chain_id: str, token_address: str) -> dict[str, Any]:
-    """Inspect a token and return best pair + concentration proxies."""
+    """Deep-dive inspection of a specific token by chain and address.
+
+    Returns the best trading pair, price data, volume, liquidity, market cap,
+    and concentration proxy analysis. Use this when a user provides a specific
+    token address and wants detailed information.
+    """
     async with DexScreenerClient() as client:
         scanner = HotScanner(client)
         pairs = await scanner.inspect_token(chain_id=chain_id, token_address=token_address)
