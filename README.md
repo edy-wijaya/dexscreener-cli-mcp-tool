@@ -159,46 +159,124 @@ ds search pepe --json
 
 ---
 
-## Examples
+## What Can I Do With This?
 
-**Solana-only scan, 10 results:**
+### "I just want to see what's hot right now"
+
+```bash
+ds hot
+```
+
+Shows the top trending tokens across all chains, scored and ranked. Done.
+
+### "I only care about Solana"
+
 ```bash
 ds hot --chains solana --limit 10
 ```
 
-**Live dashboard, refresh every 5 seconds:**
+### "Show me tokens on Base too"
+
+```bash
+ds hot --chains solana,base --limit 15
+```
+
+### "I want a live feed that updates automatically"
+
 ```bash
 ds watch --chains solana,base --interval 5
 ```
 
-**Live new runner tracker on Solana:**
+This refreshes every 5 seconds. Press `Ctrl+C` to stop.
+
+### "Show me brand new tokens that just launched"
+
+```bash
+ds new-runners --chain solana
+ds top-new --chain base
+```
+
+### "I want a live feed of new launches only"
+
 ```bash
 ds new-runners-watch --chain solana --interval 6
 ```
 
-**Live alpha drops with Discord alerts:**
+### "Find me alpha - new drops with breakout potential"
+
 ```bash
-ds alpha-drops-watch --chains solana,base --discord-webhook-url https://discord.com/api/webhooks/...
+ds alpha-drops --chains solana,base
 ```
 
-**Discovery mode (loose filters to find more tokens):**
+Or live with auto-refresh:
 ```bash
-ds hot --chains solana --limit 20 --min-liquidity-usd 8000 --min-volume-h24-usd 10000 --min-txns-h1 5
+ds alpha-drops-watch --chains solana,base
 ```
 
-**Create and use a custom profile:**
+### "Search for a specific token"
+
 ```bash
-ds preset save degen --chains solana,base --limit 15 --min-liquidity-usd 8000
-ds hot --preset degen
-ds watch --preset degen
+ds search pepe
+ds search 0x6982508145454ce325ddbe47a25d4ec3d2311933    # by address
 ```
 
-**Set up scheduled Discord alerts:**
+### "I found a token, give me everything on it"
+
 ```bash
-ds task create scout --preset degen --interval-seconds 60
-ds task configure scout --discord-webhook-url https://discord.com/api/webhooks/...
+ds inspect So11111111111111111111111111111111111111112 --chain solana
+```
+
+### "I want to filter differently than the defaults"
+
+Save your own profile and reuse it everywhere:
+
+```bash
+ds preset save my-degen --chains solana,base --limit 20 --min-liquidity-usd 5000 --min-txns-h1 3
+
+ds hot --preset my-degen
+ds watch --preset my-degen
+```
+
+### "Alert me on Discord when something hot appears"
+
+```bash
+# 1. Save your filter profile
+ds preset save scout --chains solana --limit 10 --min-liquidity-usd 10000
+
+# 2. Create a task that scans every 60 seconds
+ds task create my-alerts --preset scout --interval-seconds 60
+
+# 3. Add your Discord webhook
+ds task configure my-alerts --discord-webhook-url https://discord.com/api/webhooks/YOUR/WEBHOOK
+
+# 4. Test it
+ds task test-alert my-alerts
+
+# 5. Start the scanner
 ds task daemon --all
 ```
+
+Works the same with Telegram:
+```bash
+ds task configure my-alerts --telegram-bot-token YOUR_BOT_TOKEN --telegram-chat-id YOUR_CHAT_ID
+```
+
+### "I want JSON output for my own scripts"
+
+```bash
+ds hot --json
+ds search pepe --json
+ds hot --chains solana --limit 5 --json > tokens.json
+```
+
+### "I want an AI agent to use this"
+
+Start the MCP server and connect it to Claude, Codex, or any MCP-compatible agent:
+```bash
+dexscreener-mcp
+```
+
+Then ask in natural language: "What's hot on Solana?" or "Find new tokens on Base with high volume."
 
 ---
 
@@ -280,18 +358,64 @@ See `SKILL.md` for the full skill specification.
 
 ---
 
+## APIs & Data Sources
+
+Everything works out of the box with zero API keys. You can optionally add keys to unlock more data.
+
+### What's included for free (no keys needed)
+
+| API | What it provides | Rate Limit |
+|-----|-----------------|------------|
+| [Dexscreener](https://docs.dexscreener.com/) | All token/pair data, prices, volume, liquidity, boosts, profiles | 60-300 rpm |
+| [GeckoTerminal](https://www.geckoterminal.com/) | Holder counts, trending pools, new token discovery | Free tier |
+| [Blockscout](https://docs.blockscout.com/) | Holder counts for Ethereum and Base | Unlimited |
+| [Honeypot.is](https://honeypot.is/) | Holder counts for all EVM chains | Free tier |
+
+### Optional APIs you can add
+
+| API | What it unlocks | How to get a key | Cost |
+|-----|----------------|-----------------|------|
+| [Moralis](https://moralis.io/) | Better holder data for all chains (EVM + Solana) | Sign up at moralis.io | Free tier available (40K requests/month) |
+
+To add an optional key, create a `.env` file in the project root:
+```
+MORALIS_API_KEY=your_key_here
+```
+
+### Holder data coverage per chain
+
+The scanner tries multiple providers in order until it gets a result:
+
+| Chain | GeckoTerminal | Moralis (optional) | Blockscout | Honeypot.is |
+|-------|:---:|:---:|:---:|:---:|
+| **Solana** | yes | yes (with key) | - | - |
+| **Ethereum** | yes | yes (with key) | yes | yes |
+| **Base** | yes | yes (with key) | yes | yes |
+| **BSC** | yes | yes (with key) | - | yes |
+| **Arbitrum** | yes | yes (with key) | - | yes |
+| **Polygon** | yes | yes (with key) | - | yes |
+| **Optimism** | yes | yes (with key) | - | yes |
+| **Avalanche** | yes | yes (with key) | - | yes |
+
+Without any API keys, you still get holder counts on every chain through GeckoTerminal, Blockscout, and Honeypot.is. Adding a Moralis key gives you a more reliable fallback.
+
+### How rate limiting works
+
+Dexscreener enforces:
+- **60 rpm** for token profiles, boosts, orders
+- **300 rpm** for search, pairs, token-pairs
+
+The scanner handles this automatically with separate rate-limit buckets, 20-second caching, and retry/backoff. Holder data is cached for 15 minutes. You don't need to worry about hitting limits.
+
+---
+
 ## Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `MORALIS_API_KEY` | No | Enables Moralis as fallback holder data provider |
+| `MORALIS_API_KEY` | No | Enables Moralis holder data (free tier: 40K req/month) |
 | `DS_TABLE_MODE` | No | Set to `compact` for narrow terminals |
 | `DS_TABLE_WIDTH` | No | Override auto-detected terminal width |
-
-Create a `.env` file in the project root:
-```
-MORALIS_API_KEY=your_key_here
-```
 
 ---
 
@@ -299,13 +423,15 @@ MORALIS_API_KEY=your_key_here
 
 Three built-in filter profiles, applied with chain-specific multipliers:
 
-| Profile | Min Liquidity | Min 24h Volume | Min Txns/h |
-|---------|--------------|----------------|------------|
-| **strict** | $35,000 | $90,000 | 50 |
-| **balanced** | $20,000 | $40,000 | 25 |
-| **discovery** | $8,000 | $10,000 | 5 |
+| Profile | Min Liquidity | Min 24h Volume | Min Txns/h | Good for |
+|---------|--------------|----------------|------------|----------|
+| **discovery** | $8,000 | $10,000 | 5 | Finding early gems, degen plays, micro-caps |
+| **balanced** | $20,000 | $40,000 | 25 | General scanning, mix of safety and opportunity |
+| **strict** | $35,000 | $90,000 | 50 | Established tokens only, blue-chip filtering |
 
 Use `ds profiles --chains solana,base` to see chain-adjusted values.
+
+You can also create your own profiles with `ds preset save` (see [Custom Scan Profiles](#custom-scan-profiles) above).
 
 ---
 
@@ -313,37 +439,18 @@ Use `ds profiles --chains solana,base` to see chain-adjusted values.
 
 Each token gets a 0-100 score based on 8 weighted components:
 
-1. **Volume velocity** - How fast volume is growing
-2. **Transaction velocity** - Transaction count momentum
-3. **Relative strength** - Performance vs chain average
-4. **Breakout readiness** - Compression pattern detection
-5. **Boost velocity** - Dexscreener boost activity rate
-6. **Momentum decay** - How well momentum sustains
-7. **Liquidity depth** - Pair liquidity health
-8. **Flow pressure** - Buy vs sell imbalance
+| Component | What it measures |
+|-----------|-----------------|
+| **Volume velocity** | How fast trading volume is growing |
+| **Transaction velocity** | Rate of transaction count increase |
+| **Relative strength** | Performance compared to the chain average |
+| **Breakout readiness** | Price compression patterns (coiling before a move) |
+| **Boost velocity** | Rate of Dexscreener boost activity |
+| **Momentum decay** | Whether momentum is sustaining or fading |
+| **Liquidity depth** | Health and depth of the liquidity pool |
+| **Flow pressure** | Buy vs sell transaction imbalance |
 
----
-
-## Holder Data
-
-Holder counts are fetched from multiple providers in order:
-
-1. **GeckoTerminal** - Free, no key, all chains
-2. **Moralis** - EVM chains (requires `MORALIS_API_KEY`)
-3. **Blockscout** - ETH + Base, free
-4. **Honeypot.is** - EVM chains, free
-
-Results are cached for 15 minutes to reduce API load.
-
----
-
-## API Rate Limits
-
-Dexscreener enforces:
-- **60 rpm** for token profiles, boosts, orders
-- **300 rpm** for search, pairs, token-pairs
-
-The scanner uses separate rate-limit buckets, short TTL caching, and retry/backoff to stay within limits.
+**What the scores mean:** 80+ = very hot, 60-80 = interesting, 40-60 = moderate, below 40 = weak
 
 ---
 
