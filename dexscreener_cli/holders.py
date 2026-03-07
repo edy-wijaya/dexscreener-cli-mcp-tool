@@ -52,7 +52,7 @@ HONEYPOT_CHAIN_IDS: dict[str, int] = {
 
 HOLDER_CACHE_TTL_SECONDS = 15 * 60
 HOLDER_REQUEST_TIMEOUT_SECONDS = 8.0
-HOLDER_REQUESTS_PER_MINUTE = 45
+HOLDER_REQUESTS_PER_MINUTE = 28
 
 _holder_limiter = SlidingWindowLimiter(HOLDER_REQUESTS_PER_MINUTE)
 _holder_cache_lock = asyncio.Lock()
@@ -98,22 +98,29 @@ async def _fetch_gecko(
     network = GECKO_CHAIN_IDS.get(chain_id)
     if not network:
         return None
-    try:
-        resp = await client.get(
-            f"https://api.geckoterminal.com/api/v2/networks/{network}/tokens/{token_address}/info",
-            headers={"Accept": "application/json"},
-        )
-        if resp.status_code >= 400:
+    url = f"https://api.geckoterminal.com/api/v2/networks/{network}/tokens/{token_address}/info"
+    for attempt in range(3):
+        try:
+            resp = await client.get(url, headers={"Accept": "application/json"})
+            if resp.status_code == 429:
+                # Rate limited — back off and retry
+                await asyncio.sleep(1.5 * (attempt + 1))
+                continue
+            if resp.status_code >= 400:
+                return None
+            data = resp.json()
+            attrs = data.get("data", {}).get("attributes", {})
+            holders = attrs.get("holders")
+            if isinstance(holders, dict):
+                count = holders.get("count")
+                if count is not None:
+                    return int(count)
             return None
-        data = resp.json()
-        attrs = data.get("data", {}).get("attributes", {})
-        holders = attrs.get("holders")
-        if isinstance(holders, dict):
-            count = holders.get("count")
-            if count is not None:
-                return int(count)
-    except Exception:
-        pass
+        except Exception:
+            if attempt < 2:
+                await asyncio.sleep(1.0)
+                continue
+            return None
     return None
 
 
@@ -281,7 +288,7 @@ async def hydrate_pair_holders(pairs: list[PairSnapshot], *, max_pairs: int | No
     if max_pairs is not None and max_pairs > 0:
         ordered = ordered[:max_pairs]
 
-    semaphore = asyncio.Semaphore(8)
+    semaphore = asyncio.Semaphore(3)
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(HOLDER_REQUEST_TIMEOUT_SECONDS),
     ) as client:
@@ -326,7 +333,7 @@ async def hydrate_token_rows_with_holders(
     if max_rows is not None and max_rows > 0:
         ordered = ordered[:max_rows]
 
-    semaphore = asyncio.Semaphore(8)
+    semaphore = asyncio.Semaphore(3)
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(HOLDER_REQUEST_TIMEOUT_SECONDS),
     ) as client:
