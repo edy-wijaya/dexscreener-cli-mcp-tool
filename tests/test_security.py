@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 
 from dexscreener_cli.alerts import _build_delivery_target, _SafeTemplate, _sanitize_channel_error, validate_webhook_url
+from dexscreener_cli.cli import _build_alert_config as build_cli_alert_config
 from dexscreener_cli.client import _validate_path_segment
 from dexscreener_cli.task_runner import _sanitize_error
 from dexscreener_cli.watch_controls import _sanitize_clipboard
@@ -134,6 +135,19 @@ class TestPinnedWebhookTargets:
         assert "api.telegram.org" not in target.connect_url
         assert target.host_header == "api.telegram.org"
         assert target.sni_hostname == "api.telegram.org"
+
+
+class TestCliAlertValidation:
+    def test_cli_rejects_unsafe_webhook_url(self) -> None:
+        with pytest.raises(ValueError, match="https://"):
+            build_cli_alert_config(
+                webhook_url="http://example.com/hook",
+                discord_webhook_url=None,
+                telegram_bot_token=None,
+                telegram_chat_id=None,
+                alert_min_score=None,
+                alert_cooldown_seconds=None,
+            )
 
 
 class TestSanitizeClipboard:
