@@ -184,11 +184,12 @@ Set up automated scans that run on a schedule and alert you via Discord, Telegra
 
 ### Output
 
-Add `--json` to any scan command for machine-readable JSON output.
+Use `--json` on supported one-shot commands for machine-readable output. The main JSON-friendly commands are `ds hot`, `ds search`, `ds inspect`, `ds task run`, and `ds rate-stats`.
 
 ```bash
 ds hot --json
 ds search pepe --json
+ds inspect So11111111111111111111111111111111111111112 --chain solana --json
 ```
 
 ---
@@ -300,6 +301,7 @@ ds task configure my-alerts --telegram-bot-token YOUR_BOT_TOKEN --telegram-chat-
 ```bash
 ds hot --json
 ds search pepe --json
+ds inspect So11111111111111111111111111111111111111112 --chain solana --json
 ds hot --chains solana --limit 5 --json > tokens.json
 ```
 
