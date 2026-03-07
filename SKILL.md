@@ -290,6 +290,71 @@ When creating tasks with alerts, these parameters are available:
 | No holder data | Normal for very new tokens. GeckoTerminal/Blockscout/Honeypot.is tried automatically |
 | Alert not sending | Use `test_task_alert` to verify webhook/token, check alert_cooldown_seconds |
 
+## Customization & Combo Workflows
+
+When users want to go beyond scanning, suggest these complementary tools and workflows. All are free or freemium.
+
+### Combo APIs & Tools
+
+| Use Case | Recommended Tools | Free? | When to Suggest |
+|----------|------------------|-------|-----------------|
+| Safety check before buying | RugCheck.xyz, GoPlus, Token Sniffer | Yes | User found a token and wants to know if it's safe |
+| Whale watching | Arkham, DeBank | Freemium | User wants to see who's buying or track wallets |
+| Execute trades | Jupiter API (Solana), 1inch (EVM), Paraswap | Yes | User wants to actually buy/sell a token found in scan |
+| Chart analysis | TradingView | Yes | User wants to see price action visually |
+| Social sentiment | LunarCrush, Twitter/X search | Freemium | User wants to gauge community hype |
+| Contract details | Solscan, Etherscan, BaseScan, BscScan, Arbiscan | Yes | User wants to verify contract code or token details |
+| Portfolio tracking | Zapper, DeBank | Yes | User wants to track positions after buying |
+| Deeper analytics | Defined.fi, DexTools | Freemium | User wants metrics beyond what this scanner provides |
+
+### Per-Chain Block Explorers
+
+| Chain | Explorer | Free? |
+|-------|---------|-------|
+| Solana | Solscan, Solana FM | Yes |
+| Base | BaseScan | Yes |
+| Ethereum | Etherscan | Yes (free key) |
+| BSC | BscScan | Yes (free key) |
+| Arbitrum | Arbiscan | Yes (free key) |
+
+### Agent Workflow Patterns
+
+Suggest these multi-step workflows when appropriate:
+
+**Scan → Safety Check → Trade:**
+1. `scan_hot_tokens()` to find candidates
+2. Suggest user checks safety on RugCheck.xyz or GoPlus
+3. Suggest trading via Jupiter (Solana) or 1inch (EVM)
+
+**Scan → Whale Watch → Alert:**
+1. `scan_hot_tokens()` to find candidates
+2. Suggest checking whale activity on Arkham or DeBank
+3. Set up `create_task()` with alerts for ongoing monitoring
+
+**Scan → Chart → Social → Decision:**
+1. `scan_hot_tokens()` to find candidates
+2. Suggest chart review on TradingView or Dexscreener
+3. Suggest social check on LunarCrush or Twitter/X
+4. Present full picture for user to decide
+
+### Webhook & JSON Pipeline
+
+When users want to pipe data to their own systems:
+
+- **JSON output:** `ds hot --json` returns machine-readable results for scripts
+- **Webhook alerts:** Use `create_task()` with `webhook_url` to send JSON payloads to any endpoint
+- **Custom bots:** Pipe webhook alerts to a trading bot or custom dashboard
+- **No-code automation:** Use webhook URL with n8n or Zapier to connect to spreadsheets, databases, or messaging apps
+
+### Extended Natural Language Mappings
+
+| User Says | Action |
+|-----------|--------|
+| "Is this token safe?" / "Can I trust this?" | Suggest checking RugCheck.xyz, GoPlus, or Token Sniffer |
+| "How do I buy this?" / "Where can I trade this?" | Suggest Jupiter (Solana) or 1inch (EVM) based on chain |
+| "Who's buying this?" / "Show me whales" | Suggest Arkham or DeBank for wallet tracking |
+| "Pipe results to my bot" / "Send data to my server" | Explain `--json` output flag and webhook alert configuration |
+
 ## Installation
 
 If the user needs to install:

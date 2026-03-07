@@ -167,6 +167,9 @@ async def scan_hot_tokens(
     Returns a list of scored token objects with price, volume, liquidity,
     holder count, score (0-100), tags, and detailed analytics.
     Score ranges: 80+ = very hot, 60-80 = interesting, 40-60 = moderate, <40 = weak.
+
+    Tip: Combine scan results with safety checkers (RugCheck, GoPlus), DEX aggregators
+    (Jupiter, 1inch), or chart tools (TradingView) for a complete discovery-to-trade workflow.
     """
     chain_ids = tuple(c.strip().lower() for c in chains.split(",") if c.strip())
     async with DexScreenerClient() as client:

@@ -2,7 +2,7 @@
 
 ![Dexscreener CLI Screenshot](assets/screenshot.png)
 
-**100% free to use.** All APIs included are public and free - no API keys required to get started. Optional Moralis key unlocks holder data.
+**100% free to use.** All APIs included are public and free - no Dexscreener API key required to get started. Optional free Moralis key unlocks holder data.
 
 A visual terminal scanner, MCP server, and AI skill for Dexscreener token signals. **Unofficial** - not affiliated with or endorsed by Dexscreener.
 
@@ -479,6 +479,58 @@ Dexscreener enforces:
 - **300 rpm** for search, pairs, token-pairs
 
 The scanner handles this automatically with separate rate-limit buckets, 20-second caching, and retry/backoff. Holder data is cached for 15 minutes. You don't need to worry about hitting limits.
+
+---
+
+## Extend & Customize
+
+### Combine with free tools
+
+Use scan results as a starting point, then layer on these complementary tools for a full workflow:
+
+| Use Case | Tools | Free? |
+|----------|-------|-------|
+| Safety check before buying | [RugCheck.xyz](https://rugcheck.xyz/), [GoPlus](https://gopluslabs.io/), [Token Sniffer](https://tokensniffer.com/) | Yes |
+| Whale watching | [Arkham](https://www.arkhamintelligence.com/), [DeBank](https://debank.com/) | Freemium |
+| Execute trades | [Jupiter](https://jup.ag/) (Solana), [1inch](https://1inch.io/) (EVM), [Paraswap](https://www.paraswap.io/) | Yes |
+| Chart analysis | [TradingView](https://www.tradingview.com/) | Yes |
+| Social sentiment | [LunarCrush](https://lunarcrush.com/), Twitter/X search | Freemium |
+| Portfolio tracking | [Zapper](https://zapper.xyz/), [DeBank](https://debank.com/) | Yes |
+| Deeper analytics | [Defined.fi](https://www.defined.fi/), [DexTools](https://www.dextools.io/) | Freemium |
+
+### Per-chain block explorers
+
+| Chain | Explorer |
+|-------|---------|
+| Solana | [Solscan](https://solscan.io/), [Solana FM](https://solana.fm/) |
+| Base | [BaseScan](https://basescan.org/) |
+| Ethereum | [Etherscan](https://etherscan.io/) |
+| BSC | [BscScan](https://bscscan.com/) |
+| Arbitrum | [Arbiscan](https://arbiscan.io/) |
+
+### Build your own workflow
+
+**Scan, check, trade:**
+```bash
+# 1. Find hot tokens
+ds hot --chains solana --json > tokens.json
+
+# 2. Check safety on RugCheck.xyz or GoPlus
+# 3. Trade via Jupiter (jup.ag) or 1inch
+```
+
+**Pipe to your bot or dashboard:**
+```bash
+# JSON output for scripts
+ds hot --chains solana --limit 5 --json | your-script.py
+
+# Webhook alerts to a custom bot
+ds task create my-bot --chains solana --interval-seconds 60
+ds task configure my-bot --webhook-url https://your-server.com/hook
+```
+
+**No-code automations:**
+- Use the webhook URL with [n8n](https://n8n.io/) or [Zapier](https://zapier.com/) to pipe alerts into spreadsheets, databases, or messaging apps.
 
 ---
 
