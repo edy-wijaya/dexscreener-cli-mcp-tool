@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import re
 from collections import deque
 from itertools import islice
 from time import monotonic
@@ -21,6 +22,16 @@ from .config import (
 )
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
+
+# Validation for path segments used in API URLs to prevent path traversal.
+_SAFE_PATH_SEGMENT = re.compile(r"^[a-zA-Z0-9_\-]+$")
+
+
+def _validate_path_segment(value: str, name: str) -> str:
+    """Ensure a value is safe for use as a URL path segment."""
+    if not value or not _SAFE_PATH_SEGMENT.match(value):
+        raise ValueError(f"Invalid {name}: must be alphanumeric (got {value!r})")
+    return value
 
 
 class SlidingWindowLimiter:
@@ -200,6 +211,8 @@ class DexScreenerClient:
         return list(data)
 
     async def get_orders(self, chain_id: str, token_address: str) -> dict[str, Any]:
+        _validate_path_segment(chain_id, "chain_id")
+        _validate_path_segment(token_address, "token_address")
         return await self._get_json(f"/orders/v1/{chain_id}/{token_address}", bucket="slow")
 
     async def search_pairs(self, query: str) -> list[dict[str, Any]]:
@@ -207,6 +220,8 @@ class DexScreenerClient:
         return list(data.get("pairs", []))
 
     async def get_pair(self, chain_id: str, pair_address: str) -> dict[str, Any]:
+        _validate_path_segment(chain_id, "chain_id")
+        _validate_path_segment(pair_address, "pair_address")
         data = await self._get_json(
             f"/latest/dex/pairs/{chain_id}/{pair_address}",
             bucket="fast",
@@ -220,6 +235,8 @@ class DexScreenerClient:
         return {}
 
     async def get_token_pairs(self, chain_id: str, token_address: str) -> list[dict[str, Any]]:
+        _validate_path_segment(chain_id, "chain_id")
+        _validate_path_segment(token_address, "token_address")
         data = await self._get_json(
             f"/token-pairs/v1/{chain_id}/{token_address}",
             bucket="fast",
@@ -238,7 +255,10 @@ class DexScreenerClient:
         return chunks
 
     async def get_pairs_for_tokens(self, chain_id: str, token_addresses: list[str]) -> list[dict[str, Any]]:
+        _validate_path_segment(chain_id, "chain_id")
         unique = [token.strip() for token in token_addresses if token.strip()]
+        for addr in unique:
+            _validate_path_segment(addr, "token_address")
         # Dex API allows up to 30 token addresses per request for /tokens/v1.
         chunked = self._chunked(list(dict.fromkeys(unique)), 30)
         merged: list[dict[str, Any]] = []
