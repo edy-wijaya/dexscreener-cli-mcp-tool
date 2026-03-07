@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import re
+import shutil
 import subprocess
 from typing import Literal, TypedDict
 
@@ -16,15 +18,32 @@ class ControlAction(TypedDict):
     value: str
 
 
+def _sanitize_clipboard(payload: str) -> str:
+    """Strip control characters and limit length for clipboard safety."""
+    cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", payload)
+    return cleaned[:500]
+
+
 def copy_to_clipboard(payload: str) -> bool:
+    safe_payload = _sanitize_clipboard(payload)
     try:
         if os.name == "nt":
-            subprocess.run(["clip"], input=payload, text=True, check=True)
+            clip_path = shutil.which("clip") or r"C:\Windows\System32\clip.exe"
+            subprocess.run([clip_path], input=safe_payload, text=True, check=True)
             return True
         if os.name == "posix":
-            for cmd in (["pbcopy"], ["wl-copy"], ["xclip", "-selection", "clipboard"]):
+            candidates = [
+                (["pbcopy"], "pbcopy"),
+                (["wl-copy"], "wl-copy"),
+                (["xclip", "-selection", "clipboard"], "xclip"),
+            ]
+            for cmd, name in candidates:
+                resolved = shutil.which(name)
+                if not resolved:
+                    continue
+                cmd[0] = resolved
                 try:
-                    subprocess.run(cmd, input=payload, text=True, check=True)
+                    subprocess.run(cmd, input=safe_payload, text=True, check=True)
                     return True
                 except Exception:
                     continue
