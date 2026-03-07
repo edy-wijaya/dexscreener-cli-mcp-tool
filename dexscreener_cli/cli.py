@@ -271,6 +271,39 @@ def _candidate_json(c: HotTokenCandidate) -> dict[str, object]:
     }
 
 
+def _pair_json(pair: PairSnapshot) -> dict[str, object]:
+    return {
+        "chainId": pair.chain_id,
+        "dexId": pair.dex_id,
+        "pairAddress": pair.pair_address,
+        "pairUrl": pair.pair_url,
+        "tokenAddress": pair.base_address,
+        "tokenSymbol": pair.base_symbol,
+        "tokenName": pair.base_name,
+        "quoteSymbol": pair.quote_symbol,
+        "priceUsd": pair.price_usd,
+        "priceChangeH1": pair.price_change_h1,
+        "priceChangeH24": pair.price_change_h24,
+        "volumeH24": pair.volume_h24,
+        "volumeH6": pair.volume_h6,
+        "volumeH1": pair.volume_h1,
+        "volumeM5": pair.volume_m5,
+        "buysH1": pair.buys_h1,
+        "sellsH1": pair.sells_h1,
+        "buysH24": pair.buys_h24,
+        "sellsH24": pair.sells_h24,
+        "txnsH1": pair.txns_h1,
+        "txnsH24": pair.txns_h24,
+        "liquidityUsd": pair.liquidity_usd,
+        "marketCap": pair.market_cap,
+        "fdv": pair.fdv,
+        "holdersCount": pair.holders_count,
+        "holdersSource": pair.holders_source,
+        "pairCreatedAtMs": pair.pair_created_at_ms,
+        "ageHours": pair.age_hours,
+    }
+
+
 def _resolved_filters(
     *,
     chains: str | None,
@@ -1835,6 +1868,7 @@ def inspect(
     address: Annotated[str, typer.Argument(help="Token address or pair address")],
     chain: Annotated[str, typer.Option("--chain", "-c", help="Chain ID, e.g. solana/base/ethereum")] = "solana",
     pair: Annotated[bool, typer.Option("--pair", help="Treat address as pair address")] = False,
+    as_json: Annotated[bool, typer.Option("--json", help="Output machine-readable JSON")] = False,
 ) -> None:
     """Inspect a token or specific pair with concentration proxies."""
 
@@ -1846,6 +1880,9 @@ def inspect(
                 if not p:
                     console.print("[red]Pair not found.[/red]")
                     raise typer.Exit(code=1)
+                if as_json:
+                    typer.echo(json.dumps({"pair": _pair_json(p)}, indent=2, ensure_ascii=True))
+                    return
                 console.print(build_header())
                 console.print(render_inspect_view(p))
                 return
@@ -1871,6 +1908,22 @@ def inspect(
 
             from .scoring import build_distribution_heuristics
             heuristics = build_distribution_heuristics(candidate)
+            if as_json:
+                typer.echo(
+                    json.dumps(
+                        {
+                            "primaryPair": _pair_json(primary),
+                            "distributionProxy": heuristics,
+                            "boostTotal": boost_total,
+                            "boostCount": len(boosts),
+                            "hasProfile": candidate.has_profile,
+                            "additionalPairCount": max(len(pairs) - 1, 0),
+                        },
+                        indent=2,
+                        ensure_ascii=True,
+                    )
+                )
+                return
 
             console.print(build_header())
             console.print(render_inspect_view(
@@ -1888,6 +1941,7 @@ def inspect(
 def search(
     query: Annotated[str, typer.Argument(help="Search query (symbol, token, pair) ")],
     limit: Annotated[int, typer.Option(help="Max result rows")] = 20,
+    as_json: Annotated[bool, typer.Option("--json", help="Output machine-readable JSON")] = False,
 ) -> None:
     """Search across Dexscreener pairs."""
 
@@ -1896,6 +1950,9 @@ def search(
             scanner = HotScanner(client)
             pairs = await scanner.search(query=query, limit=limit)
             await hydrate_pair_holders(pairs, max_pairs=limit)
+            if as_json:
+                typer.echo(json.dumps([_pair_json(pair) for pair in pairs], indent=2, ensure_ascii=True))
+                return
             console.print(build_header())
             console.print(render_search_table(pairs))
             console.print(render_search_disclaimer())
