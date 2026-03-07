@@ -106,9 +106,9 @@ Three built-in filter profiles:
 
 | Profile | Style | Min Liquidity | Min 24h Vol | Min Txns/h |
 |---------|-------|--------------|-------------|------------|
-| discovery | Degen / alpha hunter | $15,000 | $20,000 | 12 |
-| balanced | Standard trading | $28,000 | $70,000 | 55 |
-| strict | Conservative | $40,000 | $120,000 | 110 |
+| discovery | Degen / alpha hunter | $8,000 | $10,000 | 5 |
+| balanced | Standard trading | $20,000 | $40,000 | 25 |
+| strict | Conservative | $35,000 | $90,000 | 50 |
 
 Map user intent:
 - "Find me alpha" / "degen mode" / "loose filters" -> discovery profile values

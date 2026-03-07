@@ -235,9 +235,9 @@ Three built-in filter profiles, applied with chain-specific multipliers:
 
 | Profile | Min Liquidity | Min 24h Volume | Min Txns/h |
 |---------|--------------|----------------|------------|
-| **strict** | $40,000 | $120,000 | 110 |
-| **balanced** | $28,000 | $70,000 | 55 |
-| **discovery** | $15,000 | $20,000 | 12 |
+| **strict** | $35,000 | $90,000 | 50 |
+| **balanced** | $20,000 | $40,000 | 25 |
+| **discovery** | $8,000 | $10,000 | 5 |
 
 Use `ds profiles --chains solana,base` to see chain-adjusted values.
 
