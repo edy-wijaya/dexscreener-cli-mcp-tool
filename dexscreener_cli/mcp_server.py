@@ -72,12 +72,32 @@ _MAX_NAME_LEN = 200
 _MAX_TEMPLATE_LEN = 2000
 _MAX_CHAINS_LEN = 500
 _MAX_NOTES_LEN = 1000
+_MAX_LIMIT = 100
+_MAX_INTERVAL_SECONDS = 86_400
+_MAX_TASK_RUNS = 500
+_MAX_IMPORT_PRESETS = 100
+_MAX_IMPORT_TASKS = 500
+_MAX_IMPORT_RUNS = 5_000
 
 
 def _clamp_str(value: str, max_len: int, label: str = "value") -> str:
     """Truncate a string to max_len and warn if it was too long."""
     if len(value) > max_len:
         return value[:max_len]
+    return value
+
+
+def _bounded_int(value: int, *, minimum: int, maximum: int, label: str) -> int:
+    if value < minimum or value > maximum:
+        raise ValueError(f"{label} must be between {minimum} and {maximum}")
+    return value
+
+
+def _bounded_float(value: float, *, minimum: float, maximum: float | None = None, label: str) -> float:
+    if value < minimum:
+        raise ValueError(f"{label} must be >= {minimum}")
+    if maximum is not None and value > maximum:
+        raise ValueError(f"{label} must be <= {maximum}")
     return value
 
 
@@ -185,6 +205,10 @@ async def scan_hot_tokens(
     Tip: Combine scan results with safety checkers (RugCheck, GoPlus), DEX aggregators
     (Jupiter, 1inch), or chart tools (TradingView) for a complete discovery-to-trade workflow.
     """
+    limit = _bounded_int(limit, minimum=1, maximum=_MAX_LIMIT, label="limit")
+    min_liquidity_usd = _bounded_float(min_liquidity_usd, minimum=0.0, label="min_liquidity_usd")
+    min_volume_h24_usd = _bounded_float(min_volume_h24_usd, minimum=0.0, label="min_volume_h24_usd")
+    min_txns_h1 = _bounded_int(min_txns_h1, minimum=0, maximum=1_000_000, label="min_txns_h1")
     chain_ids = tuple(c.strip().lower() for c in chains.split(",") if c.strip())
     async with DexScreenerClient() as client:
         scanner = HotScanner(client)
@@ -242,6 +266,10 @@ async def save_preset(
     The preset named "default" is auto-loaded on every scan.
     """
     name = _clamp_str(name, _MAX_NAME_LEN, "name")
+    limit = _bounded_int(limit, minimum=1, maximum=_MAX_LIMIT, label="limit")
+    min_liquidity_usd = _bounded_float(min_liquidity_usd, minimum=0.0, label="min_liquidity_usd")
+    min_volume_h24_usd = _bounded_float(min_volume_h24_usd, minimum=0.0, label="min_volume_h24_usd")
+    min_txns_h1 = _bounded_int(min_txns_h1, minimum=0, maximum=1_000_000, label="min_txns_h1")
     filters = ScanFilters(
         chains=_parse_chains(chains),
         limit=limit,
@@ -301,6 +329,8 @@ async def create_task(
     """
     name = _clamp_str(name, _MAX_NAME_LEN, "name")
     notes = _clamp_str(notes, _MAX_NOTES_LEN, "notes")
+    if preset:
+        preset = _clamp_str(preset, _MAX_NAME_LEN, "preset")
     if alert_template:
         alert_template = _clamp_str(alert_template, _MAX_TEMPLATE_LEN, "alert_template")
     # Validate webhook URLs at storage time to prevent SSRF.
@@ -309,19 +339,55 @@ async def create_task(
     if discord_webhook_url:
         validate_webhook_url(discord_webhook_url)
     store = StateStore()
+    if preset and not store.get_preset(preset):
+        raise ValueError(f"Preset '{preset}' not found")
     overrides: dict[str, Any] = {}
     if chains:
         overrides["chains"] = list(_parse_chains(chains))
     if limit is not None:
+        limit = _bounded_int(limit, minimum=1, maximum=_MAX_LIMIT, label="limit")
         overrides["limit"] = limit
     if min_liquidity_usd is not None:
+        min_liquidity_usd = _bounded_float(min_liquidity_usd, minimum=0.0, label="min_liquidity_usd")
         overrides["min_liquidity_usd"] = min_liquidity_usd
     if min_volume_h24_usd is not None:
+        min_volume_h24_usd = _bounded_float(min_volume_h24_usd, minimum=0.0, label="min_volume_h24_usd")
         overrides["min_volume_h24_usd"] = min_volume_h24_usd
     if min_txns_h1 is not None:
+        min_txns_h1 = _bounded_int(min_txns_h1, minimum=0, maximum=1_000_000, label="min_txns_h1")
         overrides["min_txns_h1"] = min_txns_h1
     if min_price_change_h1 is not None:
         overrides["min_price_change_h1"] = min_price_change_h1
+    if interval_seconds is not None:
+        interval_seconds = _bounded_int(
+            interval_seconds,
+            minimum=15,
+            maximum=_MAX_INTERVAL_SECONDS,
+            label="interval_seconds",
+        )
+    if alert_cooldown_seconds is not None:
+        alert_cooldown_seconds = _bounded_int(
+            alert_cooldown_seconds,
+            minimum=0,
+            maximum=_MAX_INTERVAL_SECONDS,
+            label="alert_cooldown_seconds",
+        )
+    if alert_top_n is not None:
+        alert_top_n = _bounded_int(alert_top_n, minimum=1, maximum=10, label="alert_top_n")
+    if alert_min_score is not None:
+        alert_min_score = _bounded_float(alert_min_score, minimum=0.0, maximum=100.0, label="alert_min_score")
+    if alert_min_liquidity_usd is not None:
+        alert_min_liquidity_usd = _bounded_float(
+            alert_min_liquidity_usd,
+            minimum=0.0,
+            label="alert_min_liquidity_usd",
+        )
+    if alert_max_vol_liq_ratio is not None:
+        alert_max_vol_liq_ratio = _bounded_float(
+            alert_max_vol_liq_ratio,
+            minimum=0.0,
+            label="alert_max_vol_liq_ratio",
+        )
     alerts = _build_alert_config(
         webhook_url=webhook_url,
         discord_webhook_url=discord_webhook_url,
@@ -409,6 +475,12 @@ async def run_due_tasks(
     Checks each task's interval and last run time, runs due tasks,
     fires alerts if thresholds are met, and records results.
     """
+    default_interval_seconds = _bounded_int(
+        default_interval_seconds,
+        minimum=15,
+        maximum=_MAX_INTERVAL_SECONDS,
+        label="default_interval_seconds",
+    )
     store = StateStore()
     due = select_due_tasks(
         store=store,
@@ -490,6 +562,7 @@ async def list_task_runs(task: str | None = None, limit: int = 100) -> list[dict
 
     Shows when each task ran, how many tokens were found, top score, and alert status.
     """
+    limit = _bounded_int(limit, minimum=1, maximum=_MAX_TASK_RUNS, label="limit")
     store = StateStore()
     return [r.to_dict() for r in store.list_runs(task=task, limit=limit)]
 
@@ -513,13 +586,20 @@ async def import_state_bundle(bundle: dict[str, Any], mode: str = "merge") -> di
     """
     if mode not in {"merge", "replace"}:
         return {"error": "Invalid mode. Use merge or replace."}
+    if not isinstance(bundle, dict):
+        return {"error": "Bundle must be a JSON object"}
+    presets = bundle.get("presets", [])
+    tasks = bundle.get("tasks", [])
+    runs = bundle.get("runs", [])
+    if not isinstance(presets, list) or not isinstance(tasks, list) or not isinstance(runs, list):
+        return {"error": "Bundle presets/tasks/runs must be arrays"}
     # Bound imported items to prevent resource exhaustion.
-    _MAX_IMPORT_PRESETS = 100
-    _MAX_IMPORT_TASKS = 500
-    if len(bundle.get("presets", [])) > _MAX_IMPORT_PRESETS:
+    if len(presets) > _MAX_IMPORT_PRESETS:
         return {"error": f"Bundle exceeds max {_MAX_IMPORT_PRESETS} presets"}
-    if len(bundle.get("tasks", [])) > _MAX_IMPORT_TASKS:
+    if len(tasks) > _MAX_IMPORT_TASKS:
         return {"error": f"Bundle exceeds max {_MAX_IMPORT_TASKS} tasks"}
+    if len(runs) > _MAX_IMPORT_RUNS:
+        return {"error": f"Bundle exceeds max {_MAX_IMPORT_RUNS} runs"}
     store = StateStore()
     counts = store.import_bundle(bundle, mode=mode)  # type: ignore[arg-type]
     return {"ok": True, "mode": mode, "counts": counts}
@@ -533,6 +613,7 @@ async def search_pairs(query: str, limit: int = 20) -> list[dict[str, Any]]:
     "look up this address", etc. Returns matching pairs with price,
     volume, liquidity, and pair URL.
     """
+    limit = _bounded_int(limit, minimum=1, maximum=_MAX_LIMIT, label="limit")
     async with DexScreenerClient() as client:
         scanner = HotScanner(client)
         pairs = await scanner.search(query=query, limit=limit)

@@ -23,7 +23,7 @@ from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
 
-from .alerts import send_alerts, send_test_alert
+from .alerts import send_alerts, send_test_alert, validate_webhook_url
 from .client import DexScreenerClient
 from .config import DEFAULT_CHAINS, ScanFilters
 from .holders import hydrate_pair_holders, hydrate_token_rows_with_holders
@@ -370,8 +370,10 @@ def _build_alert_config(
 ) -> dict[str, object] | None:
     alerts: dict[str, object] = dict(from_existing or {})
     if webhook_url is not None:
+        validate_webhook_url(webhook_url)
         alerts["webhook_url"] = webhook_url
     if discord_webhook_url is not None:
+        validate_webhook_url(discord_webhook_url)
         alerts["discord_webhook_url"] = discord_webhook_url
     if telegram_bot_token is not None:
         alerts["telegram_bot_token"] = telegram_bot_token
@@ -2614,7 +2616,11 @@ def state_import(
         console.print(f"[red]Invalid JSON: {exc}[/red]")
         raise typer.Exit(code=1) from exc
     store = StateStore()
-    counts = store.import_bundle(bundle, mode=mode)  # type: ignore[arg-type]
+    try:
+        counts = store.import_bundle(bundle, mode=mode)  # type: ignore[arg-type]
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
     console.print(
         f"[green]Imported state ({mode}). presets={counts['presets']} tasks={counts['tasks']} runs={counts['runs']}[/green]"
     )

@@ -135,3 +135,21 @@ class TestImportBundle:
         assert counts["tasks"] == 1
         assert store.get_task("will-be-gone") is None
         assert store.get_task("only-one") is not None
+
+    def test_import_rejects_invalid_task_status(self, store: StateStore) -> None:
+        bundle = {
+            "presets": [],
+            "tasks": [{"id": "bad1", "name": "broken", "status": "wat", "notes": ""}],
+            "runs": [],
+        }
+        with pytest.raises(ValueError, match="invalid task status"):
+            store.import_bundle(bundle, mode="merge")
+
+    def test_import_rejects_non_object_runs(self, store: StateStore) -> None:
+        bundle = {
+            "presets": [],
+            "tasks": [],
+            "runs": ["bad"],
+        }
+        with pytest.raises(ValueError, match="runs must contain only objects"):
+            store.import_bundle(bundle, mode="merge")

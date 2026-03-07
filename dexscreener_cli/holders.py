@@ -4,6 +4,7 @@ import asyncio
 import os
 from time import monotonic
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from dotenv import load_dotenv
@@ -115,7 +116,8 @@ async def _fetch_gecko(
     network = GECKO_CHAIN_IDS.get(chain_id)
     if not network:
         return None
-    url = f"https://api.geckoterminal.com/api/v2/networks/{network}/tokens/{token_address}/info"
+    safe_token = quote(token_address, safe="")
+    url = f"https://api.geckoterminal.com/api/v2/networks/{network}/tokens/{safe_token}/info"
     for attempt in range(3):
         try:
             resp = await client.get(url, headers={"Accept": "application/json"})
@@ -154,8 +156,9 @@ async def _fetch_blockscout(
     if not base_url:
         return None
     try:
+        safe_token = quote(token_address, safe="")
         resp = await client.get(
-            f"{base_url}/api/v2/tokens/{token_address}",
+            f"{base_url}/api/v2/tokens/{safe_token}",
             headers={"Accept": "application/json"},
         )
         if resp.status_code >= 400:
@@ -223,15 +226,17 @@ async def _fetch_moralis(
     headers = {"Accept": "application/json", "X-API-Key": _moralis_api_key}
 
     if chain_id == "solana":
-        url = f"https://solana-gateway.moralis.io/token/mainnet/{token_address}/holders"
+        safe_token = quote(token_address, safe="")
+        url = f"https://solana-gateway.moralis.io/token/mainnet/{safe_token}/holders"
     elif chain_id in MORALIS_EVM_CHAINS:
         moralis_chain = MORALIS_EVM_CHAINS[chain_id]
-        url = f"https://deep-index.moralis.io/api/v2.2/erc20/{token_address}/holders?chain={moralis_chain}"
+        safe_token = quote(token_address, safe="")
+        url = f"https://deep-index.moralis.io/api/v2.2/erc20/{safe_token}/holders"
     else:
         return None
 
     try:
-        resp = await client.get(url, headers=headers)
+        resp = await client.get(url, headers=headers, params={"chain": moralis_chain} if chain_id in MORALIS_EVM_CHAINS else None)
         if resp.status_code >= 400:
             return None
         data = resp.json()

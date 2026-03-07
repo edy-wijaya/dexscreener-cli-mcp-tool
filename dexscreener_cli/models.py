@@ -79,13 +79,29 @@ class PairSnapshot:
     @classmethod
     def from_api(cls, payload: dict[str, Any]) -> PairSnapshot:
         base = payload.get("baseToken", {})
+        if not isinstance(base, dict):
+            base = {}
         quote = payload.get("quoteToken", {})
+        if not isinstance(quote, dict):
+            quote = {}
         txns = payload.get("txns", {})
+        if not isinstance(txns, dict):
+            txns = {}
         h1_txns = txns.get("h1", {})
+        if not isinstance(h1_txns, dict):
+            h1_txns = {}
         h24_txns = txns.get("h24", {})
+        if not isinstance(h24_txns, dict):
+            h24_txns = {}
         volume = payload.get("volume", {})
+        if not isinstance(volume, dict):
+            volume = {}
         p_change = payload.get("priceChange", {})
+        if not isinstance(p_change, dict):
+            p_change = {}
         liquidity = payload.get("liquidity", {})
+        if not isinstance(liquidity, dict):
+            liquidity = {}
 
         return cls(
             chain_id=str(payload.get("chainId", "")),

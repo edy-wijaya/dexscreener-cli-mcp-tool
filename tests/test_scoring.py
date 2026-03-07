@@ -117,6 +117,22 @@ class TestScoreHotness:
         assert s1 == s2
         assert t1 == t2
 
+    def test_negative_inputs_do_not_crash(self) -> None:
+        pair = _make_pair(
+            volume_h24=-10_000,
+            liquidity_usd=-5_000,
+            buys_h1=-5,
+            sells_h1=-10,
+            buys_h24=-20,
+            sells_h24=-30,
+        )
+        score, tags, components = score_hotness_detail(pair, boost_total=-200)
+        assert 0 <= score <= 100
+        assert isinstance(tags, list)
+        assert components["volume"] >= 0
+        assert components["liquidity"] >= 0
+        assert components["boost"] >= 0
+
 
 class TestDistributionHeuristics:
     def test_balanced_status(self) -> None:

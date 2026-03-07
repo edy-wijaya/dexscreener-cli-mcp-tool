@@ -10,6 +10,8 @@ from uuid import uuid4
 from .config import DEFAULT_CHAINS, ScanFilters
 
 TaskStatus = Literal["todo", "running", "done", "blocked"]
+_VALID_TASK_STATUSES: frozenset[str] = frozenset({"todo", "running", "done", "blocked"})
+_MAX_IMPORTED_RUNS = 5_000
 
 
 def utc_now_iso() -> str:
@@ -231,9 +233,12 @@ class StateStore:
         if not text:
             return {}
         try:
-            return json.loads(text)
+            payload = json.loads(text)
         except json.JSONDecodeError:
             return {}
+        if not isinstance(payload, dict):
+            return {}
+        return payload
 
     def _save_json(self, path: Path, payload: dict[str, Any]) -> None:
         tmp = path.with_suffix(path.suffix + ".tmp")
@@ -447,9 +452,28 @@ class StateStore:
         }
 
     def import_bundle(self, bundle: dict[str, Any], mode: Literal["merge", "replace"] = "merge") -> dict[str, int]:
-        presets_in = [ScanPreset.from_dict(p) for p in bundle.get("presets", [])]
-        tasks_in = [ScanTask.from_dict(t) for t in bundle.get("tasks", [])]
-        runs_in = [TaskRunRecord.from_dict(r) for r in bundle.get("runs", [])]
+        if not isinstance(bundle, dict):
+            raise ValueError("Bundle must be a JSON object")
+
+        presets_raw = bundle.get("presets", [])
+        tasks_raw = bundle.get("tasks", [])
+        runs_raw = bundle.get("runs", [])
+        if not isinstance(presets_raw, list) or not isinstance(tasks_raw, list) or not isinstance(runs_raw, list):
+            raise ValueError("Bundle presets/tasks/runs must be arrays")
+        if len(runs_raw) > _MAX_IMPORTED_RUNS:
+            raise ValueError(f"Bundle exceeds max {_MAX_IMPORTED_RUNS} runs")
+        if not all(isinstance(item, dict) for item in presets_raw):
+            raise ValueError("Bundle presets must contain only objects")
+        if not all(isinstance(item, dict) for item in tasks_raw):
+            raise ValueError("Bundle tasks must contain only objects")
+        if not all(isinstance(item, dict) for item in runs_raw):
+            raise ValueError("Bundle runs must contain only objects")
+        if any(str(item.get("status", "todo")) not in _VALID_TASK_STATUSES for item in tasks_raw):
+            raise ValueError("Bundle contains invalid task status")
+
+        presets_in = [ScanPreset.from_dict(p) for p in presets_raw]
+        tasks_in = [ScanTask.from_dict(t) for t in tasks_raw]
+        runs_in = [TaskRunRecord.from_dict(r) for r in runs_raw]
 
         if mode == "replace":
             self._save_json(self.presets_file, {"presets": [p.to_dict() for p in presets_in]})

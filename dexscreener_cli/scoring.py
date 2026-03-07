@@ -30,18 +30,23 @@ def score_hotness_detail(
     boost_count: int = 0,
     has_profile: bool = False,
 ) -> tuple[float, list[str], dict[str, float]]:
-    vol_component = _clip(log1p(pair.volume_h24) / log1p(7_500_000.0), 0.0, 1.0)
-    txn_component = _clip(log1p(pair.txns_h1) / log1p(4_000.0), 0.0, 1.0)
-    liq_component = _clip(log1p(pair.liquidity_usd) / log1p(3_000_000.0), 0.0, 1.0)
+    volume_h24 = max(pair.volume_h24, 0.0)
+    txns_h1 = max(pair.txns_h1, 0)
+    liquidity_usd = max(pair.liquidity_usd, 0.0)
+    safe_boost_total = max(boost_total, 0.0)
+
+    vol_component = _clip(log1p(volume_h24) / log1p(7_500_000.0), 0.0, 1.0)
+    txn_component = _clip(log1p(txns_h1) / log1p(4_000.0), 0.0, 1.0)
+    liq_component = _clip(log1p(liquidity_usd) / log1p(3_000_000.0), 0.0, 1.0)
     momentum_component = _clip((pair.price_change_h1 + 20.0) / 70.0, 0.0, 1.0)
 
-    total_h1 = pair.txns_h1
+    total_h1 = txns_h1
     buy_pressure = 0.0
     if total_h1 > 0:
         buy_pressure = (pair.buys_h1 - pair.sells_h1) / total_h1
     pressure_component = _clip((buy_pressure + 1.0) / 2.0, 0.0, 1.0)
 
-    boost_component = _clip(log1p(boost_total) / log1p(600.0), 0.0, 1.0)
+    boost_component = _clip(log1p(safe_boost_total) / log1p(600.0), 0.0, 1.0)
     recency_component = 0.2
     if pair.age_hours is not None:
         if pair.age_hours <= 24:
