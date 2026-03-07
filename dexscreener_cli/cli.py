@@ -9,6 +9,9 @@ import shutil
 import sys
 from typing import Annotated, Any
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import typer
 from rich import box
 from rich.columns import Columns
