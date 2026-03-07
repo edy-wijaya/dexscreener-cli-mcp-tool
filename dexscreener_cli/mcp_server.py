@@ -146,9 +146,15 @@ async def scan_hot_tokens(
 
     Discovers tokens from Dexscreener boosts and profiles, scores them by volume,
     liquidity, momentum, and flow pressure, then returns ranked results.
+    All data comes from free public APIs (Dexscreener, GeckoTerminal, Blockscout, Honeypot.is).
 
     Use this when a user asks: "what's hot", "show me trending tokens",
-    "find tokens on solana", "what should I look at", etc.
+    "find tokens on solana", "what should I look at", "find degen plays", etc.
+
+    Built-in profile presets for quick filtering:
+    - Discovery (degen/alpha): min_liquidity_usd=8000, min_volume_h24_usd=10000, min_txns_h1=5
+    - Balanced (standard): min_liquidity_usd=20000, min_volume_h24_usd=40000, min_txns_h1=25
+    - Strict (conservative): min_liquidity_usd=35000, min_volume_h24_usd=90000, min_txns_h1=50
 
     Args:
         chains: Comma-separated chain IDs (solana, base, ethereum, bsc, arbitrum).
@@ -160,6 +166,7 @@ async def scan_hot_tokens(
 
     Returns a list of scored token objects with price, volume, liquidity,
     holder count, score (0-100), tags, and detailed analytics.
+    Score ranges: 80+ = very hot, 60-80 = interesting, 40-60 = moderate, <40 = weak.
     """
     chain_ids = tuple(c.strip().lower() for c in chains.split(",") if c.strip())
     async with DexScreenerClient() as client:
