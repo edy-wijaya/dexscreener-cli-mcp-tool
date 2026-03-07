@@ -16,6 +16,7 @@ import typer
 from rich import box
 from rich.columns import Columns
 from rich.console import Console, Group
+from rich.prompt import Prompt
 from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
@@ -46,6 +47,7 @@ from .ui import (
     render_pair_detail,
     render_search_table,
     render_search_disclaimer,
+    render_setup_summary,
 )
 from .watch_controls import WatchKeyboardController, copy_to_clipboard
 
@@ -279,13 +281,17 @@ def _resolved_filters(
     default_filters = ScanFilters(chains=DEFAULT_CHAINS)
     resolved = default_filters
 
+    store = StateStore()
     if preset_name:
-        store = StateStore()
         preset = store.get_preset(preset_name)
         if not preset:
             console.print(f"[red]Preset '{preset_name}' not found.[/red]")
             raise typer.Exit(code=1)
         resolved = preset.to_filters()
+    else:
+        default_preset = store.get_preset("default")
+        if default_preset:
+            resolved = default_preset.to_filters()
 
     if chains:
         resolved.chains = _parse_chains(chains)
@@ -917,6 +923,155 @@ def _select_new_runners(
             continue
         fresh.append(candidate)
     return sorted(fresh, key=lambda c: _new_runner_sort_key(c, selected_sort), reverse=True)[:limit]
+
+
+# ── Setup wizard ──────────────────────────────────────────────────────
+
+_SETUP_CHAINS = ("solana", "base", "ethereum", "bsc", "arbitrum")
+
+_SETUP_STYLES: dict[str, str] = {
+    "1": "discovery",
+    "2": "balanced",
+    "3": "strict",
+}
+
+_SETUP_STYLE_LABELS: dict[str, str] = {
+    "1": "alpha hunter",
+    "2": "balanced",
+    "3": "conservative",
+}
+
+
+@app.command("setup")
+def setup() -> None:
+    """Interactive onboarding wizard to calibrate your scanner."""
+    console.print(build_header())
+    console.print()
+    console.print(
+        Panel(
+            "[bold]Welcome to the Dex Scanner setup wizard.[/bold]\n"
+            "Answer 5 quick questions to calibrate your scanner.\n"
+            "Your settings are saved and auto-loaded on every scan.",
+            border_style="#3a3d4a",
+            box=box.HEAVY,
+            padding=(1, 2),
+        )
+    )
+    console.print()
+
+    # ── Q1: Chains ────────────────────────────────────────────────────
+    console.print("[bold #e5e7eb]Q1.[/bold #e5e7eb] Which chains do you want to scan?\n")
+    for idx, ch in enumerate(_SETUP_CHAINS, 1):
+        label = ch.upper() if ch not in ("solana",) else "SOL"
+        if ch == "solana":
+            label = "SOL"
+        elif ch == "ethereum":
+            label = "ETH"
+        elif ch == "arbitrum":
+            label = "ARB"
+        console.print(f"  [bold]{idx}[/bold]. {label}")
+    console.print(f"  [bold]{len(_SETUP_CHAINS) + 1}[/bold]. All of the above")
+    console.print()
+    chain_choice = Prompt.ask(
+        "Enter numbers separated by commas",
+        default=str(len(_SETUP_CHAINS) + 1),
+    )
+    if str(len(_SETUP_CHAINS) + 1) in chain_choice.replace(" ", "").split(","):
+        chosen_chains = _SETUP_CHAINS
+    else:
+        indices = [int(x.strip()) for x in chain_choice.split(",") if x.strip().isdigit()]
+        chosen_chains = tuple(
+            _SETUP_CHAINS[i - 1] for i in indices if 1 <= i <= len(_SETUP_CHAINS)
+        )
+        if not chosen_chains:
+            chosen_chains = _SETUP_CHAINS
+    console.print()
+
+    # ── Q2: Trading style ─────────────────────────────────────────────
+    console.print("[bold #e5e7eb]Q2.[/bold #e5e7eb] What's your trading style?\n")
+    console.print("  [bold]1[/bold]. [bold #f87171]Alpha Hunter[/bold #f87171]  - Early entries, loose filters, degen mode")
+    console.print("  [bold]2[/bold]. [bold #fbbf24]Balanced[/bold #fbbf24]      - Mix of opportunity and safety")
+    console.print("  [bold]3[/bold]. [bold #4ade80]Conservative[/bold #4ade80]  - Established tokens only, strict filters")
+    console.print()
+    style_choice = Prompt.ask("Pick a style", choices=["1", "2", "3"], default="2")
+    profile_key = _SETUP_STYLES[style_choice]
+    style_label = _SETUP_STYLE_LABELS[style_choice]
+    profile = _resolve_scan_profile(profile_key, chosen_chains)
+    min_liq = profile["min_liquidity_usd"]
+    min_vol = profile["min_volume_h24_usd"]
+    min_txns = int(profile["min_txns_h1"])
+    console.print()
+
+    # ── Q3: Limit ─────────────────────────────────────────────────────
+    console.print("[bold #e5e7eb]Q3.[/bold #e5e7eb] How many tokens per scan?\n")
+    console.print("  [bold]1[/bold]. 5   - Quick glance")
+    console.print("  [bold]2[/bold]. 10  - Standard view")
+    console.print("  [bold]3[/bold]. 20  - Full scan")
+    console.print("  [bold]4[/bold]. Custom")
+    console.print()
+    limit_choice = Prompt.ask("Pick an option", choices=["1", "2", "3", "4"], default="2")
+    limit_map = {"1": 5, "2": 10, "3": 20}
+    if limit_choice == "4":
+        custom_limit = Prompt.ask("Enter number", default="15")
+        limit = max(1, min(50, int(custom_limit) if custom_limit.isdigit() else 15))
+    else:
+        limit = limit_map[limit_choice]
+    console.print()
+
+    # ── Q4: Liquidity floor ───────────────────────────────────────────
+    console.print("[bold #e5e7eb]Q4.[/bold #e5e7eb] Minimum liquidity per token?\n")
+    console.print(f"  Your [bold]{style_label}[/bold] profile sets: [bold #4ade80]{fmt_usd(min_liq)}[/bold #4ade80]\n")
+    console.print("  [bold]1[/bold]. Keep profile default")
+    console.print("  [bold]2[/bold]. $10K+  (degen / micro-caps)")
+    console.print("  [bold]3[/bold]. $25K+  (early but safer)")
+    console.print("  [bold]4[/bold]. $50K+  (established pairs)")
+    console.print("  [bold]5[/bold]. $100K+ (blue chips only)")
+    console.print()
+    liq_choice = Prompt.ask("Pick an option", choices=["1", "2", "3", "4", "5"], default="1")
+    liq_overrides = {"2": 10_000.0, "3": 25_000.0, "4": 50_000.0, "5": 100_000.0}
+    if liq_choice in liq_overrides:
+        min_liq = liq_overrides[liq_choice]
+    console.print()
+
+    # ── Q5: Momentum filter ───────────────────────────────────────────
+    console.print("[bold #e5e7eb]Q5.[/bold #e5e7eb] Allow declining tokens in results?\n")
+    console.print("  [bold]1[/bold]. Show everything             (min -50%)")
+    console.print("  [bold]2[/bold]. Slight dips OK              (min -10%)")
+    console.print("  [bold]3[/bold]. Only pumping tokens         (min 0%)")
+    console.print("  [bold]4[/bold]. Strong momentum only        (min +5%)")
+    console.print()
+    mom_choice = Prompt.ask("Pick an option", choices=["1", "2", "3", "4"], default="2")
+    mom_map = {"1": -50.0, "2": -10.0, "3": 0.0, "4": 5.0}
+    min_pch = mom_map[mom_choice]
+    console.print()
+
+    # ── Build & save ──────────────────────────────────────────────────
+    filters = ScanFilters(
+        chains=chosen_chains,
+        limit=limit,
+        min_liquidity_usd=min_liq,
+        min_volume_h24_usd=min_vol,
+        min_txns_h1=min_txns,
+        min_price_change_h1=min_pch,
+    )
+    preset = ScanPreset.from_filters(name="default", filters=filters)
+    store = StateStore()
+    store.save_preset(preset)
+
+    # ── Summary ───────────────────────────────────────────────────────
+    console.print(render_setup_summary(
+        chains=chosen_chains,
+        style_name=style_label,
+        limit=limit,
+        min_liquidity_usd=min_liq,
+        min_volume_h24_usd=min_vol,
+        min_txns_h1=min_txns,
+        min_price_change_h1=min_pch,
+    ))
+    console.print()
+    console.print("[bold #4ade80]Saved![/bold #4ade80] Your config is now the default for all scans.")
+    console.print("Run [bold]ds hot[/bold] to start scanning with your settings.")
+    console.print("Run [bold]ds setup[/bold] again anytime to recalibrate.\n")
 
 
 @app.command("hot")

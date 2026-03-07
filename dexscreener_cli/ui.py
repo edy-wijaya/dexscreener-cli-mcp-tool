@@ -1471,3 +1471,56 @@ def render_flow_panel(candidates: list[HotTokenCandidate]) -> Panel:
         border_style=C_BORDER,
         box=box.HEAVY,
     )
+
+
+def render_setup_summary(
+    *,
+    chains: tuple[str, ...],
+    style_name: str,
+    limit: int,
+    min_liquidity_usd: float,
+    min_volume_h24_usd: float,
+    min_txns_h1: int,
+    min_price_change_h1: float,
+) -> Panel:
+    """Styled summary panel shown after completing the setup wizard."""
+    grid = Table(show_header=False, box=None, padding=(0, 2), expand=True)
+    grid.add_column("label", style=f"bold {C_LABEL}", width=18)
+    grid.add_column("value")
+
+    # Chains row
+    chain_parts = Text()
+    for i, ch in enumerate(chains):
+        if i > 0:
+            chain_parts.append("  ", style="")
+        chain_parts.append_text(_chain_text(ch))
+    grid.add_row("Chains", chain_parts)
+
+    # Style
+    style_colors = {"alpha hunter": C_RED, "balanced": C_GOLD, "conservative": C_GREEN}
+    grid.add_row("Trading Style", Text(style_name, style=f"bold {style_colors.get(style_name, C_TEXT)}"))
+
+    # Limit
+    grid.add_row("Tokens / Scan", Text(str(limit), style=f"bold {C_TEXT}"))
+
+    # Liquidity
+    grid.add_row("Min Liquidity", Text(fmt_usd(min_liquidity_usd), style=f"bold {C_GREEN}"))
+
+    # Volume
+    grid.add_row("Min 24h Volume", Text(fmt_usd(min_volume_h24_usd), style=f"bold {C_CYAN}"))
+
+    # Txns
+    grid.add_row("Min Txns / 1h", Text(str(min_txns_h1), style=f"bold {C_TEXT}"))
+
+    # Price change
+    pch_style = C_GREEN if min_price_change_h1 >= 0 else C_GOLD if min_price_change_h1 > -15 else C_RED
+    pch_label = f"{min_price_change_h1:+.0f}%"
+    grid.add_row("Min 1h Change", Text(pch_label, style=f"bold {pch_style}"))
+
+    return Panel(
+        grid,
+        title=f"[bold {C_TEXT}]{_safe_text(DIAMOND)} Your Scanner Config[/bold {C_TEXT}]",
+        border_style=C_BORDER,
+        box=box.HEAVY,
+        padding=(1, 2),
+    )
