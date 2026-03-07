@@ -16,9 +16,9 @@ from .config import (
     API_BASE,
     CACHE_TTL_SECONDS,
     MAX_RETRIES,
+    RATE_LIMITS_RPM,
     REQUEST_TIMEOUT_SECONDS,
     RETRY_BACKOFF_SECONDS,
-    RATE_LIMITS_RPM,
 )
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -81,7 +81,7 @@ class DexScreenerClient:
             "bucket_wait_seconds": {"slow": 0.0, "fast": 0.0},
         }
 
-    async def __aenter__(self) -> "DexScreenerClient":
+    async def __aenter__(self) -> DexScreenerClient:
         return self
 
     async def __aexit__(self, *_: Any) -> None:

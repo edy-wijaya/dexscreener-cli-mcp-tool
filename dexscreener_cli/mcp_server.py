@@ -439,7 +439,11 @@ async def run_due_tasks(
                     "error": result.get("error"),
                     "task": result.get("task", task.to_dict()),
                     "resultCount": len(candidates),
-                    "top": _serialize_candidate(candidates[0]) if candidates and isinstance(candidates[0], HotTokenCandidate) else None,
+                    "top": (
+                        _serialize_candidate(candidates[0])
+                        if candidates and isinstance(candidates[0], HotTokenCandidate)
+                        else None
+                    ),
                     "alert": result.get("alert"),
                     "run": result.get("run"),
                 }

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from collections import defaultdict
-from datetime import UTC, datetime
 import os
 import shutil
 import sys
+from collections import defaultdict
+from datetime import UTC, datetime
 
 from rich import box
 from rich.columns import Columns

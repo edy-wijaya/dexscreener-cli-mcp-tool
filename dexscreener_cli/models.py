@@ -77,7 +77,7 @@ class PairSnapshot:
         return max((datetime.now(UTC) - then).total_seconds() / 3600, 0.0)
 
     @classmethod
-    def from_api(cls, payload: dict[str, Any]) -> "PairSnapshot":
+    def from_api(cls, payload: dict[str, Any]) -> PairSnapshot:
         base = payload.get("baseToken", {})
         quote = payload.get("quoteToken", {})
         txns = payload.get("txns", {})

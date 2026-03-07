@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from statistics import median
-import time
 from typing import Any
 
 from .client import DexScreenerClient
@@ -94,7 +94,9 @@ class HotScanner:
         txn_velocity = pair.txns_h1 / tx_baseline
         return volume_velocity, txn_velocity
 
-    def _compression_and_readiness(self, pair: PairSnapshot, *, buy_pressure: float, volume_velocity: float, txn_velocity: float) -> tuple[float, float]:
+    def _compression_and_readiness(
+        self, pair: PairSnapshot, *, buy_pressure: float, volume_velocity: float, txn_velocity: float,
+    ) -> tuple[float, float]:
         price_noise = abs(pair.price_change_h1)
         compression_price = self._clip((9.0 - price_noise) / 9.0, 0.0, 1.0)
         flow_build = self._clip((min(volume_velocity, 3.0) / 3.0 + min(txn_velocity, 3.0) / 3.0) / 2.0, 0.0, 1.0)
@@ -121,7 +123,9 @@ class HotScanner:
             return 0.0
         return (boost_total - previous[1]) / dt_min
 
-    def _momentum_metrics(self, key: tuple[str, str], price_change_h1: float, now_s: float) -> tuple[float | None, float | None, bool]:
+    def _momentum_metrics(
+        self, key: tuple[str, str], price_change_h1: float, now_s: float,
+    ) -> tuple[float | None, float | None, bool]:
         history = self._momentum_history.setdefault(key, [])
         history.append((now_s, max(price_change_h1, 0.0)))
         cutoff = now_s - self._history_ttl_seconds

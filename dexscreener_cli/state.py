@@ -29,7 +29,7 @@ class ScanPreset:
     updated_at: str
 
     @classmethod
-    def from_filters(cls, name: str, filters: ScanFilters) -> "ScanPreset":
+    def from_filters(cls, name: str, filters: ScanFilters) -> ScanPreset:
         now = utc_now_iso()
         return cls(
             name=name,
@@ -54,7 +54,7 @@ class ScanPreset:
         )
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "ScanPreset":
+    def from_dict(cls, payload: dict[str, Any]) -> ScanPreset:
         return cls(
             name=str(payload["name"]),
             chains=tuple(payload.get("chains", DEFAULT_CHAINS)),
@@ -99,7 +99,7 @@ class ScanTask:
         alerts: dict[str, Any] | None = None,
         status: TaskStatus = "todo",
         notes: str = "",
-    ) -> "ScanTask":
+    ) -> ScanTask:
         now = utc_now_iso()
         return cls(
             id=uuid4().hex[:10],
@@ -117,7 +117,7 @@ class ScanTask:
         )
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "ScanTask":
+    def from_dict(cls, payload: dict[str, Any]) -> ScanTask:
         return cls(
             id=str(payload["id"]),
             name=str(payload["name"]),
@@ -173,7 +173,7 @@ class TaskRunRecord:
         alert_sent: bool = False,
         alert_reason: str = "n/a",
         error: str | None = None,
-    ) -> "TaskRunRecord":
+    ) -> TaskRunRecord:
         return cls(
             id=uuid4().hex[:12],
             task_id=task_id,
@@ -193,7 +193,7 @@ class TaskRunRecord:
         )
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "TaskRunRecord":
+    def from_dict(cls, payload: dict[str, Any]) -> TaskRunRecord:
         return cls(
             id=str(payload["id"]),
             task_id=str(payload.get("task_id", "")),

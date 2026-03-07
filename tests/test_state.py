@@ -1,13 +1,12 @@
 """Tests for the state store (presets, tasks, export/import)."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
 from dexscreener_cli.config import ScanFilters
-from dexscreener_cli.state import ScanPreset, ScanTask, StateStore
+from dexscreener_cli.state import ScanPreset, StateStore
 
 
 @pytest.fixture()

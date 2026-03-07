@@ -1,24 +1,25 @@
 from __future__ import annotations
 
 import asyncio
-from collections import deque
-from datetime import UTC, datetime
 import json
-from pathlib import Path
 import shutil
 import sys
+from collections import deque
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated, Any
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import typer
 from rich import box
 from rich.columns import Columns
 from rich.console import Console, Group
-from rich.prompt import Prompt
 from rich.live import Live
 from rich.panel import Panel
+from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
 
@@ -29,7 +30,8 @@ from .holders import hydrate_pair_holders, hydrate_token_rows_with_holders
 from .models import HotTokenCandidate, PairSnapshot
 from .scanner import HotScanner
 from .state import ScanPreset, ScanTask, StateStore, utc_now_iso
-from .task_runner import execute_task_once, select_due_tasks, task_filters as runner_task_filters
+from .task_runner import execute_task_once, select_due_tasks
+from .task_runner import task_filters as runner_task_filters
 from .ui import (
     build_header,
     fmt_holders,
@@ -38,18 +40,17 @@ from .ui import (
     holders_text,
     render_chain_heat_table,
     render_flow_panel,
-    render_inspect_view,
     render_hot_table,
-    render_rank_movers_table,
+    render_inspect_view,
     render_new_runner_spotlight,
     render_new_runners_table,
+    render_rank_movers_table,
     render_scan_summary,
+    render_search_disclaimer,
+    render_search_table,
+    render_setup_summary,
     render_status_footer,
     render_top_runner_cards,
-    render_pair_detail,
-    render_search_table,
-    render_search_disclaimer,
-    render_setup_summary,
 )
 from .watch_controls import WatchKeyboardController, copy_to_clipboard
 
@@ -483,8 +484,8 @@ async def _scan_ai_tokens(
         if not token_address:
             continue
         prev = dedup.get(token_address)
-        current_vol = _as_float(((p.get("volume", {}) or {}).get("h24")))
-        if prev is None or current_vol > _as_float(((prev.get("volume", {}) or {}).get("h24"))):
+        current_vol = _as_float((p.get("volume", {}) or {}).get("h24"))
+        if prev is None or current_vol > _as_float((prev.get("volume", {}) or {}).get("h24")):
             dedup[token_address] = p
 
     rows: list[dict[str, object]] = []
@@ -494,8 +495,8 @@ async def _scan_ai_tokens(
         buys_h1 = _as_int(tx_h1.get("buys"))
         sells_h1 = _as_int(tx_h1.get("sells"))
         tx1h = buys_h1 + sells_h1
-        vol24 = _as_float(((p.get("volume", {}) or {}).get("h24")))
-        liq = _as_float(((p.get("liquidity", {}) or {}).get("usd")))
+        vol24 = _as_float((p.get("volume", {}) or {}).get("h24"))
+        liq = _as_float((p.get("liquidity", {}) or {}).get("usd"))
         if vol24 < min_volume_h24_usd:
             continue
         if liq < min_liquidity_usd:
@@ -511,8 +512,8 @@ async def _scan_ai_tokens(
                 "dexId": str(p.get("dexId", "")),
                 "pairAddress": str(p.get("pairAddress", "")),
                 "priceUsd": _as_float(p.get("priceUsd")),
-                "priceChangeH1": _as_float(((p.get("priceChange", {}) or {}).get("h1"))),
-                "priceChangeH24": _as_float(((p.get("priceChange", {}) or {}).get("h24"))),
+                "priceChangeH1": _as_float((p.get("priceChange", {}) or {}).get("h1")),
+                "priceChangeH24": _as_float((p.get("priceChange", {}) or {}).get("h24")),
                 "volumeH24": vol24,
                 "liquidityUsd": liq,
                 "txnsH1": tx1h,
@@ -719,7 +720,8 @@ def _render_ai_board(
     summary_txt.append(f"    24h Vol: {fmt_usd(total_vol)}", style="#d1d5db")
     summary_txt.append(f"    Liq: {fmt_usd(total_liq)}", style="#d1d5db")
     summary_txt.append(f"    Avg Holders: {holder_hint}", style="#d1d5db")
-    summary_txt.append(f"    Avg 1h: {fmt_pct(avg_h1)}", style="#4ade80" if avg_h1 > 0 else "#f87171" if avg_h1 < 0 else "#4b5563")
+    h1_style = "#4ade80" if avg_h1 > 0 else "#f87171" if avg_h1 < 0 else "#4b5563"
+    summary_txt.append(f"    Avg 1h: {fmt_pct(avg_h1)}", style=h1_style)
     summary = Panel(
         summary_txt,
         title="[bold #e5e7eb]AI Market Snapshot[/bold #e5e7eb]",
