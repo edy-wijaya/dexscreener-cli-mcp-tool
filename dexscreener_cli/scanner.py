@@ -332,20 +332,15 @@ class HotScanner:
 
         # Add a bounded search-based discovery layer so chains like Base are not
         # under-covered when boosts/profiles are Solana-heavy.
+        # Use trending category queries (not chain names which match token names).
         now_ms = int(time.time() * 1000)
-        query_set: set[str] = set()
-        for chain_id in chains:
-            query_set.update(
-                {
-                    chain_id,
-                    f"{chain_id} new",
-                    f"{chain_id} launch",
-                    f"{chain_id} meme",
-                    f"{chain_id} ai",
-                    f"{chain_id} degen",
-                }
-            )
-        search_queries = tuple(sorted(query_set))
+        _TRENDING_QUERIES = (
+            "pepe", "meme", "pump", "moon", "degen",
+            "ai", "agent", "cat", "dog", "frog",
+            "new token", "100x", "gem",
+            "brett", "bonk", "floki", "shib",
+        )
+        search_queries = _TRENDING_QUERIES
         def as_float(value: Any) -> float:
             try:
                 return float(value or 0)
@@ -458,14 +453,48 @@ class HotScanner:
 
     async def scan(self, filters: ScanFilters) -> list[HotTokenCandidate]:
         seeds = await self._collect_seeds(filters.chains)
-        ordered_seeds = sorted(
+        # Keep fast-endpoint pressure bounded for watch mode.
+        target = min(max(filters.limit * 4, 12), 72)
+
+        # Ensure each requested chain gets minimum representation so that
+        # Solana-heavy boost endpoints don't crowd out other chains entirely.
+        num_chains = len(filters.chains)
+        all_sorted = sorted(
             seeds.values(),
             key=lambda s: (s.boost_total, s.boost_count, s.has_profile),
             reverse=True,
         )
-        # Keep fast-endpoint pressure bounded for watch mode.
-        target = min(max(filters.limit * 4, 12), 72)
-        ordered_seeds = ordered_seeds[:target]
+        if num_chains > 1:
+            per_chain_min = max(min(target // (num_chains * 2), 8), 3)
+            by_chain: dict[str, list[_SeedToken]] = defaultdict(list)
+            for s in seeds.values():
+                by_chain[s.chain_id].append(s)
+            for chain_seeds in by_chain.values():
+                chain_seeds.sort(
+                    key=lambda s: (s.boost_total, s.boost_count, s.has_profile),
+                    reverse=True,
+                )
+
+            selected: list[_SeedToken] = []
+            seen: set[tuple[str, str]] = set()
+            # Round 1: guarantee minimum per chain
+            for chain_id in filters.chains:
+                for s in by_chain.get(chain_id, [])[:per_chain_min]:
+                    key = (s.chain_id, s.token_address)
+                    if key not in seen:
+                        selected.append(s)
+                        seen.add(key)
+            # Round 2: fill remaining slots with highest-scoring tokens
+            for s in all_sorted:
+                if len(selected) >= target:
+                    break
+                key = (s.chain_id, s.token_address)
+                if key not in seen:
+                    selected.append(s)
+                    seen.add(key)
+            ordered_seeds = selected
+        else:
+            ordered_seeds = all_sorted[:target]
         prefetch = await self._prefetch_pairs_for_seeds(ordered_seeds)
 
         semaphore = asyncio.Semaphore(20)
