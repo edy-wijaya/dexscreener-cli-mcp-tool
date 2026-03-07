@@ -1063,9 +1063,9 @@ def _trust_badge(pair: PairSnapshot) -> Text:
 
     # Strong signals of legitimacy
     if holders is not None and holders >= 10_000 and liq >= 100_000:
-        return Text(_safe_text(f"{DOT} legit"), style=f"bold {C_GREEN}")
+        return Text(_safe_text(f"{DOT} looks legit"), style=f"bold {C_GREEN}")
     if holders is not None and holders >= 1_000 and liq >= 50_000 and txns >= 100:
-        return Text(_safe_text(f"{DOT} likely"), style=C_GREEN)
+        return Text(_safe_text(f"{DOT} likely ok"), style=C_GREEN)
 
     # Warning signals
     warnings: list[str] = []
@@ -1089,6 +1089,13 @@ def _trust_badge(pair: PairSnapshot) -> Text:
     return Text(_safe_text(f"{DOT} ok"), style=C_TEXT)
 
 
+def _truncate_addr(addr: str, length: int = 8) -> str:
+    """Truncate address to first..last chars."""
+    if len(addr) <= length * 2 + 2:
+        return addr
+    return f"{addr[:length]}..{addr[-length:]}"
+
+
 def render_search_table(pairs: list[PairSnapshot]) -> Table:
     compact = _compact_level() >= 1
     table = Table(
@@ -1101,6 +1108,7 @@ def render_search_table(pairs: list[PairSnapshot]) -> Table:
     )
     table.add_column("Chain", min_width=5)
     table.add_column("Token", style=f"bold {C_GOLD}")
+    table.add_column("Address", style=C_DIM, no_wrap=True)
     table.add_column("1h", justify="right", min_width=10)
     table.add_column("24h", justify="right", min_width=10)
     table.add_column("Vol 24h", justify="right")
@@ -1112,6 +1120,7 @@ def render_search_table(pairs: list[PairSnapshot]) -> Table:
         table.add_row(
             _chain_text(pair.chain_id),
             Text(_safe_text(pair.base_symbol), style=f"bold {C_GOLD}"),
+            _safe_text(_truncate_addr(pair.base_address)),
             _momentum_text(pair.price_change_h1),
             _momentum_text(pair.price_change_h24),
             fmt_usd(pair.volume_h24),
@@ -1127,172 +1136,168 @@ def render_search_table(pairs: list[PairSnapshot]) -> Table:
     return table
 
 
+def render_search_disclaimer() -> Panel:
+    """Disclaimer footer for search results."""
+    txt = Text()
+    txt.append("Disclaimer: ", style=f"bold {C_GOLD}")
+    txt.append(
+        "Trust indicators are heuristic estimates only. "
+        "Always DYOR - any token can be rugged or exploited. "
+        "Do not blindly ape. We take no responsibility for accuracy.",
+        style=C_DIM,
+    )
+    return Panel(txt, border_style=C_BORDER_DIM, box=box.HEAVY, padding=(0, 1))
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Pair detail
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-def render_pair_detail(pair: PairSnapshot, boost_total: float = 0.0, boost_count: int = 0) -> Panel:
+def render_inspect_view(
+    pair: PairSnapshot,
+    heuristics: dict[str, object] | None = None,
+    *,
+    boost_total: float = 0.0,
+    boost_count: int = 0,
+    extra_pairs: int = 0,
+) -> Table:
+    """Unified inspect view as a clean table — matches the style of other CLI views."""
     mcap = pair.market_cap if pair.market_cap > 0 else pair.fdv
     chain_style = CHAIN_STYLES.get(pair.chain_id, C_LABEL)
     chain_lbl = CHAIN_LABEL.get(pair.chain_id, pair.chain_id.upper()[:4])
 
-    # -- Header row: token identity --
-    header = Text()
-    header.append(f"{_safe_text(pair.base_name)} ", style=f"bold {C_WHITE}")
-    header.append(f"({_safe_text(pair.base_symbol)})", style=f"bold {C_GOLD}")
-    header.append("  on  ", style=C_LABEL)
-    header.append(_safe_text(DOT), style=f"bold {chain_style}")
-    header.append(f" {_safe_text(chain_lbl)}", style=chain_style)
-    header.append(f"  /  {_safe_text(pair.dex_id)}", style=C_DIM)
-
-    # -- Data table for clean alignment --
-    detail_table = Table(
-        box=None,
-        show_header=False,
-        padding=(0, 2, 0, 0),
-        expand=True,
+    # Title row
+    title = (
+        f"[bold {C_WHITE}]{_safe_text(pair.base_name)}[/bold {C_WHITE}] "
+        f"[bold {C_GOLD}]({_safe_text(pair.base_symbol)})[/bold {C_GOLD}]  "
+        f"[{chain_style}]{_safe_text(chain_lbl)}[/{chain_style}]  "
+        f"[{C_DIM}]{_safe_text(pair.dex_id)}[/{C_DIM}]"
     )
-    detail_table.add_column("label", style=C_LABEL, width=12, no_wrap=True)
-    detail_table.add_column("value", ratio=1)
 
-    # Price
+    table = Table(
+        title=title,
+        box=box.SIMPLE_HEAVY,
+        header_style=f"bold {C_TEXT}",
+        row_styles=["", "on #1e2029"],
+        border_style=C_BORDER,
+        title_style="",
+        show_header=True,
+    )
+    table.add_column("Metric", style=f"bold {C_LABEL}", width=14, no_wrap=True)
+    table.add_column("Value", ratio=1)
+
+    # -- Token info --
+    table.add_row("Token Addr", Text(_safe_text(pair.base_address), style=C_DIM))
+    table.add_row("Pair Addr", Text(_safe_text(pair.pair_address), style=C_DIM))
+
+    # -- Price --
     price_txt = Text()
     price_txt.append(fmt_price(pair.price_usd), style=f"bold {C_WHITE}")
-    price_txt.append("    1h ", style=C_LABEL)
-    price_txt.append_text(_momentum_text(pair.price_change_h1))
-    price_txt.append("    24h ", style=C_LABEL)
-    price_txt.append_text(_momentum_text(pair.price_change_h24))
-    detail_table.add_row("Price", price_txt)
+    table.add_row("Price", price_txt)
 
-    # Volume
+    # 1h / 24h changes
+    chg_txt = Text()
+    chg_txt.append("1h ", style=C_LABEL)
+    chg_txt.append_text(_momentum_text(pair.price_change_h1))
+    chg_txt.append("    24h ", style=C_LABEL)
+    chg_txt.append_text(_momentum_text(pair.price_change_h24))
+    table.add_row("Change", chg_txt)
+
+    # -- Volume --
     vol_txt = Text()
     vol_txt.append_text(_vol_heat(pair.volume_h24))
-    vol_txt.append("  6h ", style=C_LABEL)
+    vol_txt.append("    6h ", style=C_LABEL)
     vol_txt.append_text(_vol_heat(pair.volume_h6))
-    vol_txt.append("  1h ", style=C_LABEL)
+    vol_txt.append("    1h ", style=C_LABEL)
     vol_txt.append_text(_vol_heat(pair.volume_h1))
-    detail_table.add_row("Vol 24h", vol_txt)
+    table.add_row("Vol 24h", vol_txt)
 
-    # Transactions
+    # -- Transactions --
     txn_txt = Text()
     txn_txt.append(f"{pair.txns_h1}", style=f"bold {C_TEXT}")
-    txn_txt.append(f"  B{pair.buys_h1}/S{pair.sells_h1}", style=C_LABEL)
-    txn_txt.append(f"    24h ", style=C_LABEL)
+    txn_txt.append(f" (B{pair.buys_h1}/S{pair.sells_h1})", style=C_LABEL)
+    txn_txt.append("    24h ", style=C_LABEL)
     txn_txt.append(f"{pair.txns_h24}", style=f"bold {C_TEXT}")
-    txn_txt.append(f"  B{pair.buys_h24}/S{pair.sells_h24}", style=C_LABEL)
-    detail_table.add_row("Txns 1h", txn_txt)
+    txn_txt.append(f" (B{pair.buys_h24}/S{pair.sells_h24})", style=C_LABEL)
+    table.add_row("Txns 1h", txn_txt)
 
-    # Flow
-    detail_table.add_row("Flow", _flow_meter(pair.buys_h1, pair.sells_h1, width=16))
+    # -- Flow --
+    table.add_row("Flow", _flow_meter(pair.buys_h1, pair.sells_h1, width=16))
 
-    # Liquidity + MCap
+    # -- Liquidity + MCap --
     liq_txt = Text()
     liq_txt.append(fmt_usd(pair.liquidity_usd), style=f"bold {C_GREEN}")
     liq_txt.append("    MCap/FDV ", style=C_LABEL)
     liq_txt.append(fmt_usd(mcap), style=C_TEXT)
-    detail_table.add_row("Liquidity", liq_txt)
+    table.add_row("Liquidity", liq_txt)
 
-    # Holders
+    # -- Holders --
     holders_txt = Text()
     holders_txt.append_text(_holders_gauge(pair.holders_count))
     if pair.holders_source:
         holders_txt.append(f"  ({pair.holders_source})", style=C_DIM)
-    detail_table.add_row("Holders", holders_txt)
+    table.add_row("Holders", holders_txt)
 
-    # Boosts (only if present)
+    # -- Boosts --
     if boost_total or boost_count:
         boost_txt = Text()
         boost_txt.append(f"{boost_total:.0f} total", style=C_GOLD)
         boost_txt.append(f"  {boost_count} boosts", style=C_LABEL)
-        detail_table.add_row("Boosts", boost_txt)
+        table.add_row("Boosts", boost_txt)
 
-    # -- Assemble panel content --
-    from rich.console import Group as RGroup
-    parts: list[object] = [header]
+    # -- Distribution heuristics (if provided) --
+    if heuristics:
+        # Liq/MCap ratio
+        liq_to_cap = heuristics.get("liquidity_to_market_cap", 0)
+        liq_val = float(liq_to_cap) if isinstance(liq_to_cap, (int, float)) else 0.0
+        liq_r_style = f"bold {C_GREEN}" if liq_val >= 0.1 else C_GOLD if liq_val >= 0.03 else C_RED
+        table.add_row("Liq/MCap", Text(str(liq_to_cap), style=liq_r_style))
 
-    # Pair address (dimmed, below header)
-    addr_txt = Text()
-    addr_txt.append(f"Pair: {_safe_text(pair.pair_address)}", style=C_DIM)
-    parts.append(addr_txt)
-    parts.append(Text())  # spacer
+        # Vol/Liq ratio
+        vol_to_liq = heuristics.get("volume_to_liquidity_24h", 0)
+        vol_val = float(vol_to_liq) if isinstance(vol_to_liq, (int, float)) else 0.0
+        vol_r_style = C_RED if vol_val > 5 else C_GOLD if vol_val > 2 else C_GREEN
+        table.add_row("Vol/Liq 24h", Text(str(vol_to_liq), style=vol_r_style))
 
-    parts.append(detail_table)
+        # Buy/Sell imbalance
+        imbalance = heuristics.get("buy_sell_imbalance_1h", 0)
+        imb_val = float(imbalance) if isinstance(imbalance, (int, float)) else 0.0
+        imb_style = f"bold {C_GREEN}" if imb_val > 0.2 else C_RED if imb_val < -0.2 else C_TEXT
+        table.add_row("Buy/Sell 1h", Text(str(imbalance), style=imb_style))
 
-    # Dexscreener link
+        # Status
+        status = str(heuristics.get("status", ""))
+        status_style = (
+            f"bold {C_GREEN}" if status == "balanced"
+            else f"bold {C_RED}" if status == "concentrated-liquidity"
+            else f"bold {C_GOLD}"
+        )
+        table.add_row("Status", Text(status, style=status_style))
+
+    # -- Dexscreener link --
     if pair.pair_url:
-        link_txt = Text()
-        link_txt.append("\nDexscreener  ", style=C_LABEL)
-        link_txt.append(_safe_text(pair.pair_url), style=f"{C_BLUE} underline")
-        parts.append(link_txt)
+        table.add_row("Dexscreener", Text(_safe_text(pair.pair_url), style=f"{C_BLUE} underline"))
 
-    return Panel(
-        RGroup(*parts),
-        title=f"[bold {C_TEXT}]Pair Insight[/bold {C_TEXT}]",
-        border_style=C_BORDER,
-        box=box.HEAVY,
-    )
+    # -- Extra pairs hint --
+    if extra_pairs > 0:
+        table.add_row("", Text(f"{extra_pairs} additional pairs found", style=C_DIM))
+
+    return table
 
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Distribution panel
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Keep legacy wrappers for backward compatibility
+def render_pair_detail(pair: PairSnapshot, boost_total: float = 0.0, boost_count: int = 0) -> Table:
+    return render_inspect_view(pair, boost_total=boost_total, boost_count=boost_count)
 
 
-def render_distribution_panel(candidate: HotTokenCandidate) -> Panel:
+def render_distribution_panel(candidate: HotTokenCandidate) -> Table:
     heuristics = build_distribution_heuristics(candidate)
-
-    dist_table = Table(
-        box=None,
-        show_header=False,
-        padding=(0, 2, 0, 0),
-        expand=True,
-    )
-    dist_table.add_column("label", style=C_LABEL, width=14, no_wrap=True)
-    dist_table.add_column("value", ratio=1)
-
-    # Holders row
-    if candidate.pair.holders_count is not None:
-        h_txt = Text()
-        h_txt.append_text(_holders_gauge(candidate.pair.holders_count))
-        if candidate.pair.holders_source:
-            h_txt.append(f"  ({candidate.pair.holders_source})", style=C_DIM)
-        dist_table.add_row("Holders", h_txt)
-    else:
-        dist_table.add_row("Holders", Text("unavailable via public adapters", style=C_DIM))
-
-    # Liq/MCap
-    liq_to_cap = heuristics["liquidity_to_market_cap"]
-    liq_val = float(liq_to_cap) if isinstance(liq_to_cap, (int, float)) else 0.0
-    liq_style = f"bold {C_GREEN}" if liq_val >= 0.1 else C_GOLD if liq_val >= 0.03 else C_RED
-    dist_table.add_row("Liq/MCap", Text(str(liq_to_cap), style=liq_style))
-
-    # Vol/Liq 24h
-    vol_to_liq = heuristics["volume_to_liquidity_24h"]
-    vol_val = float(vol_to_liq) if isinstance(vol_to_liq, (int, float)) else 0.0
-    vol_style = C_RED if vol_val > 5 else C_GOLD if vol_val > 2 else C_GREEN
-    dist_table.add_row("Vol/Liq 24h", Text(str(vol_to_liq), style=vol_style))
-
-    # Buy/Sell imbalance
-    imbalance = heuristics["buy_sell_imbalance_1h"]
-    imb_val = float(imbalance) if isinstance(imbalance, (int, float)) else 0.0
-    imb_style = f"bold {C_GREEN}" if imb_val > 0.2 else C_RED if imb_val < -0.2 else C_TEXT
-    dist_table.add_row("Buy/Sell 1h", Text(str(imbalance), style=imb_style))
-
-    # Status
-    status = str(heuristics["status"])
-    status_style = (
-        f"bold {C_GREEN}" if status == "balanced"
-        else f"bold {C_RED}" if status == "concentrated-liquidity"
-        else f"bold {C_GOLD}"
-    )
-    dist_table.add_row("Status", Text(status, style=status_style))
-
-    return Panel(
-        dist_table,
-        title=f"[bold {C_PURPLE}]Distribution Proxy[/bold {C_PURPLE}]",
-        border_style=C_BORDER,
-        box=box.HEAVY,
+    return render_inspect_view(
+        candidate.pair,
+        heuristics=heuristics,
+        boost_total=candidate.boost_total,
+        boost_count=candidate.boost_count,
     )
 
 

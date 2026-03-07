@@ -35,7 +35,7 @@ from .ui import (
     fmt_pct,
     fmt_usd,
     holders_text,
-    render_distribution_panel,
+    render_inspect_view,
     render_hot_table,
     render_rank_movers_table,
     render_new_runner_spotlight,
@@ -45,6 +45,7 @@ from .ui import (
     render_top_runner_cards,
     render_pair_detail,
     render_search_table,
+    render_search_disclaimer,
 )
 from .watch_controls import WatchKeyboardController, copy_to_clipboard
 
@@ -1545,7 +1546,7 @@ def inspect(
                     console.print("[red]Pair not found.[/red]")
                     raise typer.Exit(code=1)
                 console.print(build_header())
-                console.print(render_pair_detail(p))
+                console.print(render_inspect_view(p))
                 return
 
             pairs = await scanner.inspect_token(chain, address)
@@ -1567,11 +1568,17 @@ def inspect(
                 tags=[],
             )
 
+            from .scoring import build_distribution_heuristics
+            heuristics = build_distribution_heuristics(candidate)
+
             console.print(build_header())
-            console.print(render_pair_detail(primary, boost_total=boost_total, boost_count=len(boosts)))
-            console.print(render_distribution_panel(candidate))
-            if len(pairs) > 1:
-                console.print(f"[dim]Additional pairs found: {len(pairs) - 1}[/dim]")
+            console.print(render_inspect_view(
+                primary,
+                heuristics=heuristics,
+                boost_total=boost_total,
+                boost_count=len(boosts),
+                extra_pairs=len(pairs) - 1,
+            ))
 
     asyncio.run(run_inspect())
 
@@ -1590,6 +1597,7 @@ def search(
             await hydrate_pair_holders(pairs, max_pairs=limit)
             console.print(build_header())
             console.print(render_search_table(pairs))
+            console.print(render_search_disclaimer())
 
     asyncio.run(run_search())
 
