@@ -274,10 +274,8 @@ def _flow_meter(buys: int, sells: int, width: int = 12) -> Text:
 
     if buy_ratio >= 0.65:
         buy_style = f"bold {C_GREEN}"
-    elif buy_ratio >= 0.5:
-        buy_style = C_GREEN
     else:
-        buy_style = C_GOLD
+        buy_style = C_GREEN
 
     if buy_ratio <= 0.35:
         sell_style = f"bold {C_RED}"
@@ -1149,87 +1147,98 @@ def render_pair_detail(pair: PairSnapshot, boost_total: float = 0.0, boost_count
     chain_style = CHAIN_STYLES.get(pair.chain_id, C_LABEL)
     chain_lbl = CHAIN_LABEL.get(pair.chain_id, pair.chain_id.upper()[:4])
 
-    content = Text()
+    # -- Header row: token identity --
+    header = Text()
+    header.append(f"{_safe_text(pair.base_name)} ", style=f"bold {C_WHITE}")
+    header.append(f"({_safe_text(pair.base_symbol)})", style=f"bold {C_GOLD}")
+    header.append("  on  ", style=C_LABEL)
+    header.append(_safe_text(DOT), style=f"bold {chain_style}")
+    header.append(f" {_safe_text(chain_lbl)}", style=chain_style)
+    header.append(f"  /  {_safe_text(pair.dex_id)}", style=C_DIM)
 
-    # Token identity
-    content.append(f"{_safe_text(pair.base_name)} ", style=f"bold {C_WHITE}")
-    content.append(f"({_safe_text(pair.base_symbol)})", style=f"bold {C_GOLD}")
-    content.append("  on  ", style=C_LABEL)
-    content.append(_safe_text(DOT), style=f"bold {chain_style}")
-    content.append(f" {_safe_text(chain_lbl)}", style=chain_style)
-    content.append(f" / {_safe_text(pair.dex_id)}\n", style=C_DIM)
-    content.append("Pair: ", style=C_LABEL)
-    content.append(f"{_safe_text(pair.pair_address)}\n", style=C_DIM)
+    # -- Data table for clean alignment --
+    detail_table = Table(
+        box=None,
+        show_header=False,
+        padding=(0, 2, 0, 0),
+        expand=True,
+    )
+    detail_table.add_column("label", style=C_LABEL, width=12, no_wrap=True)
+    detail_table.add_column("value", ratio=1)
 
-    # Separator
-    content.append(_safe_text(SEPARATOR * 48) + "\n", style=C_BORDER)
+    # Price
+    price_txt = Text()
+    price_txt.append(fmt_price(pair.price_usd), style=f"bold {C_WHITE}")
+    price_txt.append("    1h ", style=C_LABEL)
+    price_txt.append_text(_momentum_text(pair.price_change_h1))
+    price_txt.append("    24h ", style=C_LABEL)
+    price_txt.append_text(_momentum_text(pair.price_change_h24))
+    detail_table.add_row("Price", price_txt)
 
-    # Price section
-    content.append("Price   ", style=C_LABEL)
-    content.append(fmt_price(pair.price_usd), style=f"bold {C_WHITE}")
-    content.append("\n")
-    content.append("  1h    ", style=C_LABEL)
-    content.append_text(_momentum_text(pair.price_change_h1))
-    content.append("    24h   ", style=C_LABEL)
-    content.append_text(_momentum_text(pair.price_change_h24))
-    content.append("\n")
+    # Volume
+    vol_txt = Text()
+    vol_txt.append_text(_vol_heat(pair.volume_h24))
+    vol_txt.append("  6h ", style=C_LABEL)
+    vol_txt.append_text(_vol_heat(pair.volume_h6))
+    vol_txt.append("  1h ", style=C_LABEL)
+    vol_txt.append_text(_vol_heat(pair.volume_h1))
+    detail_table.add_row("Vol 24h", vol_txt)
 
-    # Separator
-    content.append(_safe_text(SEPARATOR * 48) + "\n", style=C_BORDER)
-
-    # Volume section
-    content.append("Volume\n", style=f"bold {C_TEXT}")
-    content.append("  24h   ", style=C_LABEL)
-    content.append_text(_vol_heat(pair.volume_h24))
-    content.append("    6h  ", style=C_LABEL)
-    content.append_text(_vol_heat(pair.volume_h6))
-    content.append("    1h  ", style=C_LABEL)
-    content.append_text(_vol_heat(pair.volume_h1))
-    content.append("\n")
-
-    # Transaction section
-    content.append("Txns\n", style=f"bold {C_TEXT}")
-    content.append(f"  1h    {pair.txns_h1}", style=C_TEXT)
-    content.append(f"  (B{pair.buys_h1}/S{pair.sells_h1})", style=C_LABEL)
-    content.append(f"    24h   {pair.txns_h24}", style=C_TEXT)
-    content.append(f"  (B{pair.buys_h24}/S{pair.sells_h24})\n", style=C_LABEL)
+    # Transactions
+    txn_txt = Text()
+    txn_txt.append(f"{pair.txns_h1}", style=f"bold {C_TEXT}")
+    txn_txt.append(f"  B{pair.buys_h1}/S{pair.sells_h1}", style=C_LABEL)
+    txn_txt.append(f"    24h ", style=C_LABEL)
+    txn_txt.append(f"{pair.txns_h24}", style=f"bold {C_TEXT}")
+    txn_txt.append(f"  B{pair.buys_h24}/S{pair.sells_h24}", style=C_LABEL)
+    detail_table.add_row("Txns 1h", txn_txt)
 
     # Flow
-    content.append("Flow    ", style=C_LABEL)
-    content.append_text(_flow_meter(pair.buys_h1, pair.sells_h1, width=16))
-    content.append("\n")
+    detail_table.add_row("Flow", _flow_meter(pair.buys_h1, pair.sells_h1, width=16))
 
-    # Separator
-    content.append(_safe_text(SEPARATOR * 48) + "\n", style=C_BORDER)
-
-    # Liquidity & market cap
-    content.append("Liq     ", style=C_LABEL)
-    content.append(fmt_usd(pair.liquidity_usd), style=f"bold {C_GREEN}")
-    content.append("    MCap/FDV  ", style=C_LABEL)
-    content.append(fmt_usd(mcap), style=C_TEXT)
-    content.append("\n")
+    # Liquidity + MCap
+    liq_txt = Text()
+    liq_txt.append(fmt_usd(pair.liquidity_usd), style=f"bold {C_GREEN}")
+    liq_txt.append("    MCap/FDV ", style=C_LABEL)
+    liq_txt.append(fmt_usd(mcap), style=C_TEXT)
+    detail_table.add_row("Liquidity", liq_txt)
 
     # Holders
-    content.append("Holders ", style=C_LABEL)
-    content.append_text(_holders_gauge(pair.holders_count))
+    holders_txt = Text()
+    holders_txt.append_text(_holders_gauge(pair.holders_count))
     if pair.holders_source:
-        content.append(f"  ({pair.holders_source})", style=C_DIM)
-    content.append("\n")
+        holders_txt.append(f"  ({pair.holders_source})", style=C_DIM)
+    detail_table.add_row("Holders", holders_txt)
 
-    # Boosts
+    # Boosts (only if present)
     if boost_total or boost_count:
-        content.append("Boosts  ", style=C_LABEL)
-        content.append(f"total={boost_total:.0f}  count={boost_count}\n", style=C_GOLD)
+        boost_txt = Text()
+        boost_txt.append(f"{boost_total:.0f} total", style=C_GOLD)
+        boost_txt.append(f"  {boost_count} boosts", style=C_LABEL)
+        detail_table.add_row("Boosts", boost_txt)
 
-    # Link
+    # -- Assemble panel content --
+    from rich.console import Group as RGroup
+    parts: list[object] = [header]
+
+    # Pair address (dimmed, below header)
+    addr_txt = Text()
+    addr_txt.append(f"Pair: {_safe_text(pair.pair_address)}", style=C_DIM)
+    parts.append(addr_txt)
+    parts.append(Text())  # spacer
+
+    parts.append(detail_table)
+
+    # Dexscreener link
     if pair.pair_url:
-        content.append("\n")
-        content.append("Dexscreener  ", style=C_LABEL)
-        content.append(_safe_text(pair.pair_url), style=f"{C_BLUE} underline")
+        link_txt = Text()
+        link_txt.append("\nDexscreener  ", style=C_LABEL)
+        link_txt.append(_safe_text(pair.pair_url), style=f"{C_BLUE} underline")
+        parts.append(link_txt)
 
     return Panel(
-        content,
-        title=f"[bold {C_TEXT}]{_safe_text(DIAMOND)} Pair Insight[/bold {C_TEXT}]",
+        RGroup(*parts),
+        title=f"[bold {C_TEXT}]Pair Insight[/bold {C_TEXT}]",
         border_style=C_BORDER,
         box=box.HEAVY,
     )
@@ -1242,54 +1251,56 @@ def render_pair_detail(pair: PairSnapshot, boost_total: float = 0.0, boost_count
 
 def render_distribution_panel(candidate: HotTokenCandidate) -> Panel:
     heuristics = build_distribution_heuristics(candidate)
-    txt = Text()
 
+    dist_table = Table(
+        box=None,
+        show_header=False,
+        padding=(0, 2, 0, 0),
+        expand=True,
+    )
+    dist_table.add_column("label", style=C_LABEL, width=14, no_wrap=True)
+    dist_table.add_column("value", ratio=1)
+
+    # Holders row
     if candidate.pair.holders_count is not None:
-        txt.append("Observed holders  ", style=C_LABEL)
-        txt.append_text(_holders_gauge(candidate.pair.holders_count))
+        h_txt = Text()
+        h_txt.append_text(_holders_gauge(candidate.pair.holders_count))
         if candidate.pair.holders_source:
-            txt.append(f"  ({candidate.pair.holders_source})", style=C_DIM)
-        txt.append("\n")
+            h_txt.append(f"  ({candidate.pair.holders_source})", style=C_DIM)
+        dist_table.add_row("Holders", h_txt)
     else:
-        txt.append("Holder count unavailable for this token/chain via public adapters.\n", style=f"bold {C_GOLD}")
+        dist_table.add_row("Holders", Text("unavailable via public adapters", style=C_DIM))
 
-    txt.append(_safe_text(SEPARATOR * 40) + "\n", style=C_BORDER)
-    txt.append("Market-structure concentration signals\n", style=f"bold {C_TEXT}")
-
-    # Liquidity to market cap
+    # Liq/MCap
     liq_to_cap = heuristics["liquidity_to_market_cap"]
-    txt.append(f"  {_safe_text(DOT)} liq/mcap       ", style=C_LABEL)
     liq_val = float(liq_to_cap) if isinstance(liq_to_cap, (int, float)) else 0.0
     liq_style = f"bold {C_GREEN}" if liq_val >= 0.1 else C_GOLD if liq_val >= 0.03 else C_RED
-    txt.append(f"{liq_to_cap}\n", style=liq_style)
+    dist_table.add_row("Liq/MCap", Text(str(liq_to_cap), style=liq_style))
 
-    # Volume to liquidity
+    # Vol/Liq 24h
     vol_to_liq = heuristics["volume_to_liquidity_24h"]
-    txt.append(f"  {_safe_text(DOT)} vol/liq 24h    ", style=C_LABEL)
     vol_val = float(vol_to_liq) if isinstance(vol_to_liq, (int, float)) else 0.0
     vol_style = C_RED if vol_val > 5 else C_GOLD if vol_val > 2 else C_GREEN
-    txt.append(f"{vol_to_liq}\n", style=vol_style)
+    dist_table.add_row("Vol/Liq 24h", Text(str(vol_to_liq), style=vol_style))
 
-    # Buy/sell imbalance
+    # Buy/Sell imbalance
     imbalance = heuristics["buy_sell_imbalance_1h"]
-    txt.append(f"  {_safe_text(DOT)} buy/sell 1h    ", style=C_LABEL)
     imb_val = float(imbalance) if isinstance(imbalance, (int, float)) else 0.0
     imb_style = f"bold {C_GREEN}" if imb_val > 0.2 else C_RED if imb_val < -0.2 else C_TEXT
-    txt.append(f"{imbalance}\n", style=imb_style)
+    dist_table.add_row("Buy/Sell 1h", Text(str(imbalance), style=imb_style))
 
     # Status
     status = str(heuristics["status"])
-    txt.append(f"  {_safe_text(DOT)} status         ", style=C_LABEL)
     status_style = (
         f"bold {C_GREEN}" if status == "balanced"
         else f"bold {C_RED}" if status == "concentrated-liquidity"
         else f"bold {C_GOLD}"
     )
-    txt.append(status, style=status_style)
+    dist_table.add_row("Status", Text(status, style=status_style))
 
     return Panel(
-        txt,
-        title=f"[bold {C_PURPLE}]{_safe_text(DIAMOND)} Distribution Proxy[/bold {C_PURPLE}]",
+        dist_table,
+        title=f"[bold {C_PURPLE}]Distribution Proxy[/bold {C_PURPLE}]",
         border_style=C_BORDER,
         box=box.HEAVY,
     )
