@@ -1,6 +1,6 @@
 # Dex Scanner
 
-Visual terminal scanner + MCP server for Dexscreener token signals.
+**Unofficial** visual terminal scanner + MCP server for Dexscreener token signals. Not affiliated with or endorsed by Dexscreener.
 
 Scans hot tokens across Solana, Base, Ethereum, BSC, and Arbitrum. Scores them by volume, liquidity, momentum, and flow pressure. Shows results in a styled terminal dashboard or exposes them via MCP for AI agents.
 

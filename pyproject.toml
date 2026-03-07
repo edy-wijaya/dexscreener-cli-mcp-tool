@@ -1,7 +1,7 @@
 [project]
 name = "dexscreener-cli-mcp-tool"
 version = "0.1.0"
-description = "Visual terminal CLI + MCP server for Dexscreener signal scanning"
+description = "Unofficial visual terminal CLI + MCP server for Dexscreener signal scanning"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "vibeforge1111" }]

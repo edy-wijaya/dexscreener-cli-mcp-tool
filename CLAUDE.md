@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A Dexscreener CLI scanner + MCP server for discovering hot tokens across Solana, Base, Ethereum, BSC, and Arbitrum. Scores tokens 0-100 based on volume, liquidity, momentum, and flow pressure.
+An **unofficial** CLI scanner + MCP server that uses Dexscreener's public API to discover hot tokens across Solana, Base, Ethereum, BSC, and Arbitrum. Not affiliated with or endorsed by Dexscreener. Scores tokens 0-100 based on volume, liquidity, momentum, and flow pressure.
 
 ## Quick Commands
 
