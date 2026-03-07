@@ -339,6 +339,9 @@ class HotScanner:
             "ai", "agent", "cat", "dog", "frog",
             "new token", "100x", "gem",
             "brett", "bonk", "floki", "shib",
+            "virtual", "aero", "toshi", "normie",
+            "well", "higher", "based",
+            "weth", "cbbtc", "usdc",
         )
         search_queries = _TRENDING_QUERIES
         def as_float(value: Any) -> float:

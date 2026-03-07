@@ -24,5 +24,5 @@ class ScanFilters:
     limit: int = 20
     min_liquidity_usd: float = 35_000.0
     min_volume_h24_usd: float = 90_000.0
-    min_txns_h1: int = 80
+    min_txns_h1: int = 50
     min_price_change_h1: float = -5.0
