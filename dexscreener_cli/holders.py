@@ -253,7 +253,8 @@ async def hydrate_pair_holders(pairs: list[PairSnapshot], *, max_pairs: int | No
     if not pairs:
         return
 
-    grouped: dict[tuple[str, str], list[PairSnapshot]] = {}
+    # Group by (chain, lowercase_token) for dedup, but keep original-case address for API
+    grouped: dict[tuple[str, str], tuple[str, list[PairSnapshot]]] = {}
     for pair in pairs:
         if pair.holders_count is not None:
             continue
@@ -261,7 +262,10 @@ async def hydrate_pair_holders(pairs: list[PairSnapshot], *, max_pairs: int | No
         chain = pair.chain_id.strip().lower()
         if not token:
             continue
-        grouped.setdefault((chain, token.lower()), []).append(pair)
+        key = (chain, token.lower())
+        if key not in grouped:
+            grouped[key] = (token, [])  # preserve original-case address
+        grouped[key][1].append(pair)
 
     if not grouped:
         return
@@ -270,7 +274,7 @@ async def hydrate_pair_holders(pairs: list[PairSnapshot], *, max_pairs: int | No
         grouped.items(),
         key=lambda item: max(
             (p.volume_h1 + p.volume_h24 * 0.1 + p.liquidity_usd * 0.01 + p.txns_h1 * 10.0)
-            for p in item[1]
+            for p in item[1][1]
         ),
         reverse=True,
     )
@@ -281,14 +285,17 @@ async def hydrate_pair_holders(pairs: list[PairSnapshot], *, max_pairs: int | No
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(HOLDER_REQUEST_TIMEOUT_SECONDS),
     ) as client:
-        async def worker(chain: str, token: str, bucket: list[PairSnapshot]) -> None:
+        async def worker(chain: str, original_token: str, bucket: list[PairSnapshot]) -> None:
             async with semaphore:
-                holders_count, holders_source = await fetch_holder_count(chain, token, client=client)
+                holders_count, holders_source = await fetch_holder_count(chain, original_token, client=client)
                 for pair in bucket:
                     pair.holders_count = holders_count
                     pair.holders_source = holders_source
 
-        await asyncio.gather(*(worker(chain, token, rows) for (chain, token), rows in ordered))
+        await asyncio.gather(*(
+            worker(chain, orig_token, rows)
+            for (chain, _), (orig_token, rows) in ordered
+        ))
 
 
 async def hydrate_token_rows_with_holders(
@@ -303,13 +310,17 @@ async def hydrate_token_rows_with_holders(
     if not rows:
         return
 
-    unique: dict[tuple[str, str], list[dict[str, object]]] = {}
+    # Group by lowercase key for dedup, preserve original-case token for API
+    unique: dict[tuple[str, str], tuple[str, list[dict[str, object]]]] = {}
     for row in rows:
         chain = str(row.get(chain_field, "")).strip().lower()
-        token = str(row.get(token_field, "")).strip().lower()
+        token = str(row.get(token_field, "")).strip()
         if not chain or not token:
             continue
-        unique.setdefault((chain, token), []).append(row)
+        key = (chain, token.lower())
+        if key not in unique:
+            unique[key] = (token, [])
+        unique[key][1].append(row)
 
     ordered = list(unique.items())
     if max_rows is not None and max_rows > 0:
@@ -319,11 +330,14 @@ async def hydrate_token_rows_with_holders(
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(HOLDER_REQUEST_TIMEOUT_SECONDS),
     ) as client:
-        async def worker(chain: str, token: str, bucket: list[dict[str, object]]) -> None:
+        async def worker(chain: str, original_token: str, bucket: list[dict[str, object]]) -> None:
             async with semaphore:
-                holders_count, holders_source = await fetch_holder_count(chain, token, client=client)
+                holders_count, holders_source = await fetch_holder_count(chain, original_token, client=client)
                 for row in bucket:
                     row[holders_field] = holders_count
                     row[source_field] = holders_source
 
-        await asyncio.gather(*(worker(chain, token, bucket) for (chain, token), bucket in ordered))
+        await asyncio.gather(*(
+            worker(chain, orig_token, bucket)
+            for (chain, _), (orig_token, bucket) in ordered
+        ))
