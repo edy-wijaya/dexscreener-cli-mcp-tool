@@ -16,15 +16,33 @@ from .models import HotTokenCandidate, PairSnapshot
 from .scoring import build_distribution_heuristics
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Visual identity
+# Dexscreener-inspired color palette
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+# Core palette - dark backgrounds, muted borders, punchy data colors
+C_BORDER = "#3a3d4a"           # dark grey border (subtle, not blue)
+C_BORDER_DIM = "#2a2d3a"       # even subtler border
+C_TITLE = "#e5e7eb"            # off-white for titles
+C_LABEL = "#6b7280"            # medium grey for labels
+C_DIM = "#4b5563"              # dark grey for dim text
+C_TEXT = "#d1d5db"             # light grey primary text
+C_GREEN = "#4ade80"            # dexscreener lime green (positive)
+C_GREEN_BRIGHT = "#22c55e"     # brighter green for strong positive
+C_RED = "#f87171"              # dexscreener coral red (negative)
+C_RED_BRIGHT = "#ef4444"       # brighter red for strong negative
+C_GOLD = "#fbbf24"             # amber/gold for token symbols, highlights
+C_AMBER = "#f59e0b"            # deeper amber
+C_BLUE = "#60a5fa"             # muted blue accent (links, chain)
+C_CYAN = "#67e8f9"             # light cyan (freshness)
+C_PURPLE = "#a78bfa"           # muted purple (signals)
+C_WHITE = "#f9fafb"            # near-white for emphasis
+
 CHAIN_STYLES = {
-    "solana": "bright_green",
-    "base": "bright_blue",
-    "ethereum": "bright_white",
-    "bsc": "bright_yellow",
-    "arbitrum": "bright_cyan",
+    "solana": C_GREEN,
+    "base": C_BLUE,
+    "ethereum": "#9ca3af",
+    "bsc": C_GOLD,
+    "arbitrum": C_CYAN,
 }
 
 CHAIN_LABEL = {
@@ -92,18 +110,18 @@ def fmt_holders(value: int | None) -> str:
 
 def _pct_style(value: float) -> str:
     if value >= 100:
-        return "bold bright_green"
+        return f"bold {C_GREEN_BRIGHT}"
     if value >= 12:
-        return "bold bright_green"
+        return f"bold {C_GREEN}"
     if value > 0:
-        return "green"
+        return C_GREEN
     if value <= -30:
-        return "bold bright_red"
+        return f"bold {C_RED_BRIGHT}"
     if value <= -12:
-        return "bold bright_red"
+        return f"bold {C_RED}"
     if value < 0:
-        return "red"
-    return "dim"
+        return C_RED
+    return C_DIM
 
 
 def _safe_text(value: str) -> str:
@@ -128,7 +146,7 @@ def _age_label(hours: float | None) -> str:
 
 def _chain_text(chain_id: str) -> Text:
     label = CHAIN_LABEL.get(chain_id, chain_id.upper()[:4])
-    style = CHAIN_STYLES.get(chain_id, "cyan")
+    style = CHAIN_STYLES.get(chain_id, C_LABEL)
     txt = Text()
     txt.append(_safe_text(DOT), style=f"bold {style}")
     txt.append(f" {_safe_text(label)}", style=style)
@@ -137,22 +155,22 @@ def _chain_text(chain_id: str) -> Text:
 
 def _score_style(score: float) -> str:
     if score >= 85:
-        return "bold bright_green"
+        return f"bold {C_GREEN}"
     if score >= 75:
-        return "bold bright_yellow"
-    return "bold white"
+        return f"bold {C_GOLD}"
+    return f"bold {C_TEXT}"
 
 
 def holders_text(value: int | None) -> Text:
     if value is None:
-        return Text("n/a", style="dim")
+        return Text("n/a", style=C_DIM)
     if value >= 25_000:
-        return Text(fmt_holders(value), style="bold bright_green")
+        return Text(fmt_holders(value), style=f"bold {C_GREEN}")
     if value >= 5_000:
-        return Text(fmt_holders(value), style="green")
+        return Text(fmt_holders(value), style=C_GREEN)
     if value >= 1_000:
-        return Text(fmt_holders(value), style="yellow")
-    return Text(fmt_holders(value), style="bright_red")
+        return Text(fmt_holders(value), style=C_GOLD)
+    return Text(fmt_holders(value), style=C_RED)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -165,16 +183,16 @@ def _score_gauge(score: float, width: int = 8) -> Text:
     filled = int(round((min(score, 100) / 100) * width))
     empty = width - filled
     if score >= 85:
-        fill_style = "bright_green"
+        fill_style = C_GREEN
     elif score >= 75:
-        fill_style = "bright_yellow"
+        fill_style = C_GOLD
     elif score >= 60:
-        fill_style = "white"
+        fill_style = C_TEXT
     else:
-        fill_style = "bright_red"
+        fill_style = C_RED
     txt = Text()
     txt.append(_safe_text(BAR_FILL * filled), style=fill_style)
-    txt.append(_safe_text(BAR_EMPTY * empty), style="dim")
+    txt.append(_safe_text(BAR_EMPTY * empty), style=C_DIM)
     txt.append(f" {score:.0f}", style=f"bold {fill_style}")
     return txt
 
@@ -191,23 +209,23 @@ def _momentum_text(value: float) -> Text:
         txt.append(_safe_text(f"{ARROW_DOWN} "), style=style)
         txt.append(fmt_pct(value), style=style)
     else:
-        txt.append(f"  {fmt_pct(value)}", style="dim")
+        txt.append(f"  {fmt_pct(value)}", style=C_DIM)
     return txt
 
 
 def _vol_heat(value: float, *, mini_bar: bool = False) -> Text:
     """Volume with heat-level styling and optional mini-bar prefix."""
     if value >= 10_000_000:
-        style = "bold bright_cyan"
+        style = f"bold {C_WHITE}"
         tier = 3
     elif value >= 1_000_000:
-        style = "bright_cyan"
+        style = C_TEXT
         tier = 2
     elif value >= 100_000:
-        style = "cyan"
+        style = C_LABEL
         tier = 1
     else:
-        style = "dim cyan"
+        style = C_DIM
         tier = 0
     txt = Text()
     if mini_bar:
@@ -222,27 +240,27 @@ def _age_badge(hours: float | None) -> Text:
     """Styled age with freshness indicator."""
     label = _age_label(hours)
     if hours is None:
-        return Text(label, style="dim")
+        return Text(label, style=C_DIM)
     if hours < 1:
-        return Text(_safe_text(f"{DOT} {label}"), style="bold bright_cyan")
+        return Text(_safe_text(f"{DOT} {label}"), style=f"bold {C_CYAN}")
     if hours < 6:
-        return Text(label, style="bright_cyan")
+        return Text(label, style=C_CYAN)
     if hours < 24:
-        return Text(label, style="cyan")
+        return Text(label, style=C_LABEL)
     if hours < 72:
-        return Text(label, style="white")
-    return Text(label, style="dim")
+        return Text(label, style=C_TEXT)
+    return Text(label, style=C_DIM)
 
 
 def _rank_badge(rank: int) -> Text:
     """Medal-styled rank for top positions."""
     if rank == 1:
-        return Text(_safe_text(f"{DIAMOND} {rank}"), style="bold bright_yellow")
+        return Text(_safe_text(f"{DIAMOND} {rank}"), style=f"bold {C_GOLD}")
     if rank == 2:
-        return Text(_safe_text(f"{DIAMOND} {rank}"), style="bold bright_white")
+        return Text(_safe_text(f"{DIAMOND} {rank}"), style=f"bold {C_TEXT}")
     if rank == 3:
-        return Text(_safe_text(f"{DIAMOND} {rank}"), style="bold bright_cyan")
-    return Text(str(rank), style="bold")
+        return Text(_safe_text(f"{DIAMOND} {rank}"), style=f"bold {C_LABEL}")
+    return Text(str(rank), style=C_LABEL)
 
 
 def _flow_meter(buys: int, sells: int, width: int = 12) -> Text:
@@ -255,23 +273,23 @@ def _flow_meter(buys: int, sells: int, width: int = 12) -> Text:
     sell_pct = (1 - buy_ratio) * 100
 
     if buy_ratio >= 0.65:
-        buy_style = "bold bright_green"
+        buy_style = f"bold {C_GREEN}"
     elif buy_ratio >= 0.5:
-        buy_style = "green"
+        buy_style = C_GREEN
     else:
-        buy_style = "yellow"
+        buy_style = C_GOLD
 
     if buy_ratio <= 0.35:
-        sell_style = "bold bright_red"
+        sell_style = f"bold {C_RED}"
     elif buy_ratio <= 0.5:
-        sell_style = "red"
+        sell_style = C_RED
     else:
-        sell_style = "bright_red"
+        sell_style = C_RED
 
     meter = Text()
     meter.append(_safe_text(BAR_FILL * buy_width), style=buy_style)
     meter.append(_safe_text(BAR_FILL * sell_width), style=sell_style)
-    meter.append(f" {buy_pct:>2.0f}/{sell_pct:>2.0f}", style="dim")
+    meter.append(f" {buy_pct:>2.0f}/{sell_pct:>2.0f}", style=C_DIM)
     return meter
 
 
@@ -288,21 +306,21 @@ def _pulse_meter(pair: PairSnapshot) -> Text:
     span = max(high - low, 1e-9)
     spark = "".join(SPARK[int(((point - low) / span) * (len(SPARK) - 1))] for point in points)
     rising = points[-1] >= points[0]
-    style = "bold bright_green" if rising else "bright_yellow"
+    style = f"bold {C_GREEN}" if rising else C_GOLD
     return Text(_safe_text(spark), style=style)
 
 
 def _signal_style(tags: list[str], discovery: str) -> str:
     normalized = {t.lower() for t in tags}
     if "transaction-spike" in normalized or "momentum" in normalized:
-        return "bold bright_magenta"
+        return f"bold {C_PURPLE}"
     if "buy-pressure" in normalized:
-        return "magenta"
+        return C_PURPLE
     if "fresh-pair" in normalized:
-        return "bright_cyan"
+        return C_CYAN
     if discovery == "boost":
-        return "bright_yellow"
-    return "white"
+        return C_GOLD
+    return C_TEXT
 
 
 def _compact_level() -> int:
@@ -337,13 +355,13 @@ def _signal_badge(tags: list[str], discovery: str) -> Text:
     txt = Text()
     normalized = {t.lower() for t in tags}
     if "transaction-spike" in normalized or "momentum" in normalized:
-        txt.append(_safe_text(f"{DOT} "), style="bold bright_magenta")
+        txt.append(_safe_text(f"{DOT} "), style=f"bold {C_PURPLE}")
     elif "buy-pressure" in normalized:
-        txt.append(_safe_text(f"{DOT} "), style="magenta")
+        txt.append(_safe_text(f"{DOT} "), style=C_PURPLE)
     elif "fresh-pair" in normalized:
-        txt.append(_safe_text(f"{DOT} "), style="bright_cyan")
+        txt.append(_safe_text(f"{DOT} "), style=C_CYAN)
     elif discovery == "boost":
-        txt.append(_safe_text(f"{DOT} "), style="bright_yellow")
+        txt.append(_safe_text(f"{DOT} "), style=C_GOLD)
     txt.append(_safe_text(signal), style=style)
     return txt
 
@@ -353,16 +371,16 @@ def _liq_bar(value: float) -> Text:
     tier_bar_w = 3
     if value >= 500_000:
         bar = BAR_FILL * tier_bar_w
-        style = "bold bright_green"
+        style = f"bold {C_GREEN}"
     elif value >= 100_000:
         bar = BAR_FILL * 2 + BAR_EMPTY * 1
-        style = "bright_green"
+        style = C_GREEN
     elif value >= 30_000:
         bar = BAR_FILL * 1 + BAR_EMPTY * 2
-        style = "yellow"
+        style = C_GOLD
     else:
         bar = BAR_EMPTY * tier_bar_w
-        style = "bright_red"
+        style = C_RED
     txt = Text()
     txt.append(_safe_text(bar), style=style)
     txt.append(f" {fmt_usd(value)}", style=style)
@@ -372,20 +390,20 @@ def _liq_bar(value: float) -> Text:
 def _holders_gauge(value: int | None) -> Text:
     """Holder count with mini visual tier bar."""
     if value is None:
-        return Text("n/a", style="dim")
+        return Text("n/a", style=C_DIM)
     tier_bar_w = 3
     if value >= 25_000:
         bar = BAR_FILL * tier_bar_w
-        style = "bold bright_green"
+        style = f"bold {C_GREEN}"
     elif value >= 5_000:
         bar = BAR_FILL * 2 + BAR_EMPTY * 1
-        style = "green"
+        style = C_GREEN
     elif value >= 1_000:
         bar = BAR_FILL * 1 + BAR_EMPTY * 2
-        style = "yellow"
+        style = C_GOLD
     else:
         bar = BAR_EMPTY * tier_bar_w
-        style = "bright_red"
+        style = C_RED
     txt = Text()
     txt.append(_safe_text(bar), style=style)
     txt.append(f" {fmt_holders(value)}", style=style)
@@ -401,33 +419,33 @@ def build_header() -> Panel:
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     content = Text()
-    # Gradient-styled logo
+    # Gradient-styled logo - dark theme: white to green
     logo_chars = "DEX SCANNER"
     gradient = [
-        "bold bright_cyan",
-        "bold bright_cyan",
-        "bold bright_cyan",
-        "bold bright_cyan",
-        "bold bright_blue",
-        "bold bright_magenta",
-        "bold bright_magenta",
-        "bold bright_blue",
-        "bold bright_cyan",
-        "bold bright_cyan",
-        "bold bright_cyan",
+        f"bold {C_WHITE}",
+        f"bold {C_WHITE}",
+        f"bold {C_WHITE}",
+        f"bold {C_TEXT}",
+        f"bold {C_TEXT}",
+        f"bold {C_TEXT}",
+        f"bold {C_GREEN}",
+        f"bold {C_GREEN}",
+        f"bold {C_GREEN}",
+        f"bold {C_GREEN}",
+        f"bold {C_GREEN}",
     ]
     for ch, sty in zip(logo_chars, gradient):
         content.append(ch, style=sty)
     content.append("\n")
 
-    content.append(_safe_text(SEPARATOR * 30) + "\n", style="dim bright_blue")
-    content.append("Live Signal Terminal", style="dim bright_white")
-    content.append(_safe_text(f"  {DOT}  "), style="dim bright_blue")
-    content.append(now, style="dim cyan")
+    content.append(_safe_text(SEPARATOR * 30) + "\n", style=C_BORDER)
+    content.append("Live Signal Terminal", style=C_LABEL)
+    content.append(_safe_text(f"  {DOT}  "), style=C_BORDER)
+    content.append(now, style=C_DIM)
 
     return Panel(
         content,
-        border_style="bright_blue",
+        border_style=C_BORDER,
         box=box.HEAVY,
         padding=(0, 1),
     )
@@ -442,9 +460,9 @@ def render_scan_summary(candidates: list[HotTokenCandidate]) -> Panel:
     """Performance-style KPI grid inspired by bankroll tracker reference."""
     if not candidates:
         return Panel(
-            Text("Waiting for scan data...", style="dim"),
-            title=f"[bold bright_cyan]{_safe_text(SEPARATOR * 3)} Performance {_safe_text(SEPARATOR * 3)}[/bold bright_cyan]",
-            border_style="bright_blue",
+            Text("Waiting for scan data...", style=C_DIM),
+            title=f"[{C_LABEL}]{_safe_text(SEPARATOR * 3)} Performance {_safe_text(SEPARATOR * 3)}[/{C_LABEL}]",
+            border_style=C_BORDER,
             box=box.HEAVY,
         )
 
@@ -476,24 +494,24 @@ def render_scan_summary(candidates: list[HotTokenCandidate]) -> Panel:
         expand=True,
         show_edge=False,
     )
-    grid.add_column("lbl1", style="dim", min_width=14)
+    grid.add_column("lbl1", style=C_LABEL, min_width=14)
     grid.add_column("val1", min_width=18)
-    grid.add_column("sep", width=1, style="dim bright_blue")
-    grid.add_column("lbl2", style="dim", min_width=14)
+    grid.add_column("sep", width=1, style=C_BORDER)
+    grid.add_column("lbl2", style=C_LABEL, min_width=14)
     grid.add_column("val2", min_width=18)
 
     # Row 1: Tokens Found | Top Mover
     tokens_txt = Text()
     count = len(candidates)
     if count >= 15:
-        tokens_txt.append(str(count), style="bold bright_green")
+        tokens_txt.append(str(count), style=f"bold {C_GREEN}")
     elif count >= 5:
-        tokens_txt.append(str(count), style="bold bright_yellow")
+        tokens_txt.append(str(count), style=f"bold {C_GOLD}")
     else:
-        tokens_txt.append(str(count), style="bold bright_red")
+        tokens_txt.append(str(count), style=f"bold {C_RED}")
 
     top_txt = Text()
-    top_txt.append(_safe_text(top.pair.base_symbol), style="bold bright_yellow")
+    top_txt.append(_safe_text(top.pair.base_symbol), style=f"bold {C_GOLD}")
     top_txt.append("  ", style="")
     top_txt.append_text(_momentum_text(top.pair.price_change_h1))
 
@@ -504,8 +522,8 @@ def render_scan_summary(candidates: list[HotTokenCandidate]) -> Panel:
     buy_bar_w = 8
     buy_filled = int(round(buy_ratio * buy_bar_w))
     sell_filled = buy_bar_w - buy_filled
-    buy_style = "bright_green" if buy_ratio >= 0.55 else "yellow" if buy_ratio >= 0.45 else "bright_red"
-    sell_style = "bright_red" if buy_ratio < 0.45 else "red" if buy_ratio < 0.55 else "bright_red"
+    buy_style = C_GREEN if buy_ratio >= 0.55 else C_GOLD if buy_ratio >= 0.45 else C_RED
+    sell_style = C_RED
     buy_txt.append(_safe_text(BAR_FILL * buy_filled), style=buy_style)
     buy_txt.append(_safe_text(BAR_FILL * sell_filled), style=sell_style)
     buy_txt.append(f" {buy_ratio * 100:.0f}%", style=f"bold {buy_style}")
@@ -513,11 +531,11 @@ def render_scan_summary(candidates: list[HotTokenCandidate]) -> Panel:
     grid.add_row("Total 24h Vol", _vol_heat(total_vol), _safe_text(VLINE), "Buy Pressure", buy_txt)
 
     # Row 3: Total Liquidity | Hot Chain
-    liq_txt = Text(fmt_usd(total_liq), style="bold bright_green")
+    liq_txt = Text(fmt_usd(total_liq), style=f"bold {C_GREEN}")
     hot_chain_txt = _chain_text(hot_chain)
     chain_count_txt = Text()
     chain_count_txt.append_text(hot_chain_txt)
-    chain_count_txt.append(f"  ({chain_counts[hot_chain]} tokens)", style="dim")
+    chain_count_txt.append(f"  ({chain_counts[hot_chain]} tokens)", style=C_DIM)
 
     grid.add_row("Total Liquidity", liq_txt, _safe_text(VLINE), "Hot Chain", chain_count_txt)
 
@@ -526,8 +544,8 @@ def render_scan_summary(candidates: list[HotTokenCandidate]) -> Panel:
 
     return Panel(
         grid,
-        title=f"[bold bright_cyan]{_safe_text(SEPARATOR * 3)} Performance {_safe_text(SEPARATOR * 3)}[/bold bright_cyan]",
-        border_style="bright_blue",
+        title=f"[{C_LABEL}]{_safe_text(SEPARATOR * 3)} Performance {_safe_text(SEPARATOR * 3)}[/{C_LABEL}]",
+        border_style=C_BORDER,
         box=box.HEAVY,
         padding=(0, 1),
     )
@@ -550,30 +568,30 @@ def render_status_footer(
 
     # Left: profile + chains
     if profile:
-        txt.append(_safe_text(f"{DOT} "), style="dim bright_cyan")
-        txt.append(profile.upper(), style="bold bright_cyan")
+        txt.append(_safe_text(f"{DOT} "), style=C_GREEN)
+        txt.append(profile.upper(), style=f"bold {C_GREEN}")
         txt.append("  ", style="")
     if chains:
         chain_labels = ", ".join(CHAIN_LABEL.get(c, c.upper()[:4]) for c in chains)
-        txt.append(_safe_text(f"{VLINE} "), style="dim")
-        txt.append(chain_labels, style="bright_blue")
+        txt.append(_safe_text(f"{VLINE} "), style=C_BORDER)
+        txt.append(chain_labels, style=C_LABEL)
 
     # Center: timestamp
-    txt.append(_safe_text(f"  {VLINE}  "), style="dim")
-    txt.append(now, style="dim cyan")
+    txt.append(_safe_text(f"  {VLINE}  "), style=C_BORDER)
+    txt.append(now, style=C_DIM)
 
     # Right: interval or static
-    txt.append(_safe_text(f"  {VLINE}  "), style="dim")
+    txt.append(_safe_text(f"  {VLINE}  "), style=C_BORDER)
     if interval is not None:
-        txt.append(f"refresh {interval:.0f}s", style="dim")
-        txt.append(_safe_text(f"  {DOT}  "), style="dim")
-        txt.append("Ctrl+C to exit", style="dim bright_yellow")
+        txt.append(f"refresh {interval:.0f}s", style=C_DIM)
+        txt.append(_safe_text(f"  {DOT}  "), style=C_BORDER)
+        txt.append("Ctrl+C to exit", style=C_GOLD)
     else:
-        txt.append("one-shot scan", style="dim")
+        txt.append("one-shot scan", style=C_DIM)
 
     return Panel(
         txt,
-        border_style="dim bright_blue",
+        border_style=C_BORDER_DIM,
         box=box.HEAVY,
         padding=(0, 1),
     )
@@ -599,29 +617,29 @@ def render_hot_table(
     chain_labels = ",".join(CHAIN_LABEL.get(c, c.upper()[:4]) for c in chains)
     if compact:
         title = (
-            f"[bold bright_cyan]{_safe_text(DIAMOND)} Hot Runner Scan[/bold bright_cyan] "
-            f"[bright_blue]{chain_labels}[/bright_blue]"
+            f"[bold {C_TEXT}]{_safe_text(DIAMOND)} Hot Runner Scan[/bold {C_TEXT}] "
+            f"[{C_LABEL}]{chain_labels}[/{C_LABEL}]"
         )
     else:
         title = (
-            f"[bold bright_cyan]{_safe_text(DIAMOND)} Hot Runner Scan[/bold bright_cyan]  "
-            f"[bright_blue]{chain_labels}[/bright_blue]  "
-            f"[dim]top={limit}  liq>={fmt_usd(min_liquidity_usd)}  "
-            f"vol>={fmt_usd(min_volume_h24_usd)}  tx>={min_txns_h1}[/dim]"
+            f"[bold {C_TEXT}]{_safe_text(DIAMOND)} Hot Runner Scan[/bold {C_TEXT}]  "
+            f"[{C_LABEL}]{chain_labels}[/{C_LABEL}]  "
+            f"[{C_DIM}]top={limit}  liq>={fmt_usd(min_liquidity_usd)}  "
+            f"vol>={fmt_usd(min_volume_h24_usd)}  tx>={min_txns_h1}[/{C_DIM}]"
         )
 
     table = Table(
         title=title,
-        box=box.HEAVY,
-        header_style="bold bright_white",
+        box=box.SIMPLE_HEAVY,
+        header_style=f"bold {C_TEXT}",
         show_edge=True,
-        row_styles=["", "dim"],
-        border_style="bright_blue",
+        row_styles=["", C_DIM],
+        border_style=C_BORDER,
         title_style="",
     )
-    table.add_column(_safe_text(f" {DIAMOND}"), justify="right", style="bold bright_white", width=4)
+    table.add_column(_safe_text(f" {DIAMOND}"), justify="right", style=f"bold {C_TEXT}", width=4)
     table.add_column("Chain", min_width=6)
-    table.add_column("Token", style="bold bright_yellow", min_width=8)
+    table.add_column("Token", style=f"bold {C_GOLD}", min_width=8)
     if not compact:
         table.add_column("Score", justify="center", min_width=12)
     table.add_column("1h", justify="right", min_width=10)
@@ -642,10 +660,9 @@ def render_hot_table(
         h1 = _momentum_text(p.price_change_h1)
         signal_text = _signal_badge(candidate.tags, candidate.discovery)
         boost = f"{candidate.boost_total:.0f}/{candidate.boost_count}"
-        liq_style = "bold bright_green" if p.liquidity_usd >= 100_000 else "green"
 
         if compact:
-            token_text = Text(_safe_text(p.base_symbol), style="bold bright_yellow")
+            token_text = Text(_safe_text(p.base_symbol), style=f"bold {C_GOLD}")
             table.add_row(
                 _rank_badge(i),
                 _chain_text(p.chain_id),
@@ -653,11 +670,11 @@ def render_hot_table(
                 h1,
                 _vol_heat(p.volume_h24),
                 str(p.txns_h1),
-                Text(fmt_usd(p.liquidity_usd), style=liq_style),
+                _liq_bar(p.liquidity_usd),
                 holders_text(p.holders_count),
             )
         else:
-            token_text = Text(_safe_text(p.base_symbol), style="bold bright_yellow")
+            token_text = Text(_safe_text(p.base_symbol), style=f"bold {C_GOLD}")
             table.add_row(
                 _rank_badge(i),
                 _chain_text(p.chain_id),
@@ -698,23 +715,23 @@ def render_new_runner_spotlight(
     limit: int,
 ) -> Panel:
     chain_lbl = CHAIN_LABEL.get(chain, chain.upper()[:4])
-    chain_style = CHAIN_STYLES.get(chain, "cyan")
+    chain_style = CHAIN_STYLES.get(chain, C_LABEL)
 
     txt = Text()
     txt.append(_safe_text(f"{DOT} "), style=f"bold {chain_style}")
     txt.append(f"Chain: {chain_lbl}", style=f"bold {chain_style}")
-    txt.append(_safe_text(f"  {VLINE}  "), style="dim")
-    txt.append(f"Window: <={max_age_hours:.0f}h", style="dim")
-    txt.append(_safe_text(f"  {VLINE}  "), style="dim")
-    txt.append(f"Target: top {limit}\n", style="dim")
-    txt.append(_safe_text(SEPARATOR * 36) + "\n", style="dim bright_blue")
+    txt.append(_safe_text(f"  {VLINE}  "), style=C_BORDER)
+    txt.append(f"Window: <={max_age_hours:.0f}h", style=C_LABEL)
+    txt.append(_safe_text(f"  {VLINE}  "), style=C_BORDER)
+    txt.append(f"Target: top {limit}\n", style=C_LABEL)
+    txt.append(_safe_text(SEPARATOR * 36) + "\n", style=C_BORDER)
 
     if not candidates:
-        txt.append("No fresh runners found with this filter set.", style="yellow")
+        txt.append("No fresh runners found with this filter set.", style=C_GOLD)
         return Panel(
             txt,
-            title=f"[bold bright_cyan]{_safe_text(DIAMOND)} New Runner Radar[/bold bright_cyan]",
-            border_style="bright_blue",
+            title=f"[bold {C_TEXT}]{_safe_text(DIAMOND)} New Runner Radar[/bold {C_TEXT}]",
+            border_style=C_BORDER,
             box=box.HEAVY,
         )
 
@@ -724,21 +741,21 @@ def render_new_runner_spotlight(
 
         txt.append_text(_rank_badge(i))
         txt.append("  ", style="")
-        txt.append(f"{_safe_text(p.base_symbol)} ", style="bold bright_cyan")
+        txt.append(f"{_safe_text(p.base_symbol)} ", style=f"bold {C_GOLD}")
         txt.append_text(_momentum_text(p.price_change_h1))
-        txt.append(_safe_text(f" {VLINE} "), style="dim")
-        txt.append("score ", style="dim")
+        txt.append(_safe_text(f" {VLINE} "), style=C_BORDER)
+        txt.append("score ", style=C_LABEL)
         txt.append(f"{candidate.score:.1f}", style=_score_style(candidate.score))
-        txt.append(_safe_text(f" {VLINE} "), style="dim")
-        txt.append("ready ", style="dim")
-        txt.append(f"{candidate.analytics.breakout_readiness:.0f}", style="bright_magenta")
-        txt.append(_safe_text(f" {VLINE} "), style="dim")
-        txt.append(f"age {age}\n", style="cyan")
+        txt.append(_safe_text(f" {VLINE} "), style=C_BORDER)
+        txt.append("ready ", style=C_LABEL)
+        txt.append(f"{candidate.analytics.breakout_readiness:.0f}", style=C_PURPLE)
+        txt.append(_safe_text(f" {VLINE} "), style=C_BORDER)
+        txt.append(f"age {age}\n", style=C_LABEL)
 
     return Panel(
         txt,
-        title=f"[bold bright_cyan]{_safe_text(DIAMOND)} New Runner Radar[/bold bright_cyan]",
-        border_style="bright_blue",
+        title=f"[bold {C_TEXT}]{_safe_text(DIAMOND)} New Runner Radar[/bold {C_TEXT}]",
+        border_style=C_BORDER,
         box=box.HEAVY,
     )
 
@@ -762,28 +779,28 @@ def render_new_runners_table(
 
     if compact_level >= 1:
         title = (
-            f"[bold bright_cyan]{_safe_text(DIAMOND)} Best New Runners[/bold bright_cyan] "
-            f"[bright_blue]{chain_lbl}[/bright_blue]"
+            f"[bold {C_TEXT}]{_safe_text(DIAMOND)} Best New Runners[/bold {C_TEXT}] "
+            f"[{C_LABEL}]{chain_lbl}[/{C_LABEL}]"
         )
     else:
         title = (
-            f"[bold bright_cyan]{_safe_text(DIAMOND)} Best New Runners[/bold bright_cyan]  "
-            f"[bright_blue]{chain_lbl}[/bright_blue]  "
-            f"[dim]top={limit}  age<={max_age_hours:.0f}h[/dim]"
+            f"[bold {C_TEXT}]{_safe_text(DIAMOND)} Best New Runners[/bold {C_TEXT}]  "
+            f"[{C_LABEL}]{chain_lbl}[/{C_LABEL}]  "
+            f"[{C_DIM}]top={limit}  age<={max_age_hours:.0f}h[/{C_DIM}]"
         )
 
     table = Table(
         title=title,
-        box=box.HEAVY,
-        header_style="bold bright_white",
-        row_styles=["", "dim"],
-        border_style="bright_blue",
+        box=box.SIMPLE_HEAVY,
+        header_style=f"bold {C_TEXT}",
+        row_styles=["", C_DIM],
+        border_style=C_BORDER,
         title_style="",
     )
     table.add_column(_safe_text(f" {DIAMOND}"), justify="right", width=4)
     if show_chain:
         table.add_column("Ch", min_width=6)
-    table.add_column("Token", style="bold bright_yellow", min_width=8)
+    table.add_column("Token", style=f"bold {C_GOLD}", min_width=8)
     if compact_level == 0:
         table.add_column("Score", justify="center", min_width=12)
         table.add_column("Ready", justify="right")
@@ -803,18 +820,18 @@ def render_new_runners_table(
         p = candidate.pair
         a = candidate.analytics
         is_selected = selected_index is not None and (i - 1) == selected_index
-        token_style = "bold black on bright_cyan" if is_selected else "bold bright_yellow"
-        score_style_sel = "bold black on bright_cyan" if is_selected else _score_style(candidate.score)
+        token_style = f"bold black on {C_GREEN}" if is_selected else f"bold {C_GOLD}"
+        score_style_sel = f"bold black on {C_GREEN}" if is_selected else _score_style(candidate.score)
 
         rs_style = (
-            "bold bright_green" if a.relative_strength >= 8
-            else "bold bright_red" if a.relative_strength <= -8
-            else "white"
+            f"bold {C_GREEN}" if a.relative_strength >= 8
+            else f"bold {C_RED}" if a.relative_strength <= -8
+            else C_TEXT
         )
         readiness_style = (
-            "bold bright_green" if a.breakout_readiness >= 70
-            else "yellow" if a.breakout_readiness >= 55
-            else "dim"
+            f"bold {C_GREEN}" if a.breakout_readiness >= 70
+            else C_GOLD if a.breakout_readiness >= 55
+            else C_DIM
         )
 
         row: list[object] = [_rank_badge(i)]
@@ -874,11 +891,11 @@ def render_new_runners_table(
 
 
 def render_top_runner_cards(candidates: list[HotTokenCandidate], *, pulse: bool = False) -> Columns:
-    rank_borders = ["bright_yellow", "bright_white", "bright_cyan"]
+    rank_borders = [C_GOLD, C_TEXT, C_LABEL]
     rank_titles = [
-        f"[bold bright_yellow]{_safe_text(DIAMOND)} #1  GOLD[/bold bright_yellow]",
-        f"[bold bright_white]{_safe_text(DIAMOND)} #2  SILVER[/bold bright_white]",
-        f"[bold bright_cyan]{_safe_text(DIAMOND)} #3  BRONZE[/bold bright_cyan]",
+        f"[bold {C_GOLD}]{_safe_text(DIAMOND)} #1  GOLD[/bold {C_GOLD}]",
+        f"[bold {C_TEXT}]{_safe_text(DIAMOND)} #2  SILVER[/bold {C_TEXT}]",
+        f"[bold {C_LABEL}]{_safe_text(DIAMOND)} #3  BRONZE[/bold {C_LABEL}]",
     ]
 
     cards: list[Panel] = []
@@ -888,56 +905,56 @@ def render_top_runner_cards(candidates: list[HotTokenCandidate], *, pulse: bool 
             p = candidate.pair
             border = rank_borders[rank - 1]
             if pulse and rank == 1:
-                border = "bold bright_green"
+                border = f"bold {C_GREEN}"
 
             txt = Text()
             # Token name
-            txt.append(f"{_safe_text(p.base_symbol)}\n", style="bold bright_white")
+            txt.append(f"{_safe_text(p.base_symbol)}\n", style=f"bold {C_WHITE}")
 
             # Score gauge
-            txt.append("Score  ", style="dim")
+            txt.append("Score  ", style=C_LABEL)
             txt.append_text(_score_gauge(candidate.score, width=10))
             txt.append("\n")
 
             # Ready & RS
             ready = candidate.analytics.breakout_readiness
             ready_style = (
-                "bold bright_green" if ready >= 70
-                else "bright_yellow" if ready >= 55
-                else "dim"
+                f"bold {C_GREEN}" if ready >= 70
+                else C_GOLD if ready >= 55
+                else C_DIM
             )
-            txt.append("Ready  ", style="dim")
+            txt.append("Ready  ", style=C_LABEL)
             txt.append(f"{ready:.0f}", style=ready_style)
             rs = candidate.analytics.relative_strength
-            txt.append(_safe_text(f"    {VLINE}    "), style="dim")
-            txt.append("RS ", style="dim")
-            txt.append(f"{rs:+.1f}\n", style="bold bright_green" if rs >= 5 else "bold bright_red" if rs <= -5 else "white")
+            txt.append(_safe_text(f"    {VLINE}    "), style=C_BORDER)
+            txt.append("RS ", style=C_LABEL)
+            txt.append(f"{rs:+.1f}\n", style=f"bold {C_GREEN}" if rs >= 5 else f"bold {C_RED}" if rs <= -5 else C_TEXT)
 
             # Separator
-            txt.append(_safe_text(SEPARATOR * 22) + "\n", style="dim")
+            txt.append(_safe_text(SEPARATOR * 22) + "\n", style=C_BORDER)
 
             # Holders
-            txt.append("Holders  ", style="dim")
+            txt.append("Holders  ", style=C_LABEL)
             txt.append_text(holders_text(p.holders_count))
             txt.append("\n")
 
             # 1h momentum
-            txt.append("1h       ", style="dim")
+            txt.append("1h       ", style=C_LABEL)
             txt.append_text(_momentum_text(p.price_change_h1))
             txt.append("\n")
 
             # Volume
-            txt.append("24h Vol  ", style="dim")
+            txt.append("24h Vol  ", style=C_LABEL)
             txt.append_text(_vol_heat(p.volume_h24))
             txt.append("\n")
 
             # Flow
-            txt.append("Flow     ", style="dim")
+            txt.append("Flow     ", style=C_LABEL)
             txt.append_text(_flow_meter(p.buys_h1, p.sells_h1))
             txt.append("\n")
 
             # Age
-            txt.append("Age      ", style="dim")
+            txt.append("Age      ", style=C_LABEL)
             txt.append_text(_age_badge(p.age_hours))
 
             cards.append(
@@ -952,9 +969,9 @@ def render_top_runner_cards(candidates: list[HotTokenCandidate], *, pulse: bool 
 
         cards.append(
             Panel(
-                Text(_safe_text(f"{BAR_EMPTY * 8} Waiting for data..."), style="dim"),
-                title=f"[dim]{_safe_text(DIAMOND)} #{rank}[/dim]",
-                border_style="dim",
+                Text(_safe_text(f"{BAR_EMPTY * 8} Waiting for data..."), style=C_DIM),
+                title=f"[{C_DIM}]{_safe_text(DIAMOND)} #{rank}[/{C_DIM}]",
+                border_style=C_BORDER_DIM,
                 box=box.HEAVY,
             )
         )
@@ -974,13 +991,13 @@ def _move_text(
 ) -> Text:
     prev = previous_ranks.get(key)
     if prev is None:
-        return Text("new", style="bold bright_cyan")
+        return Text("new", style=f"bold {C_CYAN}")
     delta = prev - rank
     if delta > 0:
-        return Text(_safe_text(f"{ARROW_UP}{delta}"), style="bold bright_green")
+        return Text(_safe_text(f"{ARROW_UP}{delta}"), style=f"bold {C_GREEN}")
     if delta < 0:
-        return Text(_safe_text(f"{ARROW_DOWN}{abs(delta)}"), style="bold bright_red")
-    return Text("=", style="dim")
+        return Text(_safe_text(f"{ARROW_DOWN}{abs(delta)}"), style=f"bold {C_RED}")
+    return Text("=", style=C_DIM)
 
 
 def render_rank_movers_table(
@@ -992,18 +1009,18 @@ def render_rank_movers_table(
     compact_level = _compact_level()
     show_chain = len({c.pair.chain_id for c in candidates}) > 1
     table = Table(
-        title=f"[bold bright_cyan]{_safe_text(DIAMOND)} Rank Movers[/bold bright_cyan]",
-        box=box.HEAVY,
-        header_style="bold bright_white",
-        row_styles=["", "dim"],
-        border_style="bright_blue",
+        title=f"[bold {C_TEXT}]{_safe_text(DIAMOND)} Rank Movers[/bold {C_TEXT}]",
+        box=box.SIMPLE_HEAVY,
+        header_style=f"bold {C_TEXT}",
+        row_styles=["", C_DIM],
+        border_style=C_BORDER,
         title_style="",
     )
     table.add_column("Rank", justify="right", width=4)
     table.add_column("Move", justify="right")
     if show_chain:
         table.add_column("Ch", min_width=6)
-    table.add_column("Token", style="bold bright_yellow")
+    table.add_column("Token", style=f"bold {C_GOLD}")
     if compact_level == 0:
         table.add_column("Score", justify="center", min_width=12)
         table.add_column("Ready", justify="right")
@@ -1022,12 +1039,12 @@ def render_rank_movers_table(
         ]
         if show_chain:
             row.append(_chain_text(p.chain_id))
-        row.append(Text(_safe_text(p.base_symbol), style="bold bright_yellow"))
+        row.append(Text(_safe_text(p.base_symbol), style=f"bold {C_GOLD}"))
         if compact_level == 0:
             row.extend([
                 _score_gauge(candidate.score),
-                Text(f"{candidate.analytics.breakout_readiness:.0f}", style="bright_magenta"),
-                Text(f"{candidate.analytics.relative_strength:+.1f}", style="white"),
+                Text(f"{candidate.analytics.breakout_readiness:.0f}", style=C_PURPLE),
+                Text(f"{candidate.analytics.relative_strength:+.1f}", style=C_TEXT),
                 _momentum_text(p.price_change_h1),
                 _vol_heat(p.volume_h1),
                 str(p.txns_h1),
@@ -1059,15 +1076,15 @@ def render_rank_movers_table(
 def render_search_table(pairs: list[PairSnapshot]) -> Table:
     compact = _compact_level() >= 1
     table = Table(
-        title=f"[bold bright_cyan]{_safe_text(DIAMOND)} Search Results[/bold bright_cyan]",
-        box=box.HEAVY,
-        header_style="bold bright_white",
-        row_styles=["", "dim"],
-        border_style="bright_blue",
+        title=f"[bold {C_TEXT}]{_safe_text(DIAMOND)} Search Results[/bold {C_TEXT}]",
+        box=box.SIMPLE_HEAVY,
+        header_style=f"bold {C_TEXT}",
+        row_styles=["", C_DIM],
+        border_style=C_BORDER,
         title_style="",
     )
     table.add_column("Chain", min_width=6)
-    table.add_column("Token", style="bold bright_yellow")
+    table.add_column("Token", style=f"bold {C_GOLD}")
     table.add_column("Price", justify="right")
     table.add_column("Vol24", justify="right")
     table.add_column("Tx1h", justify="right")
@@ -1075,7 +1092,7 @@ def render_search_table(pairs: list[PairSnapshot]) -> Table:
     table.add_column("Holders", justify="right")
     table.add_column("1h", justify="right", min_width=10)
     if not compact:
-        table.add_column("Pair", style="dim white")
+        table.add_column("Pair", style=C_DIM)
 
     for pair in pairs:
         if pair.price_usd >= 0.01:
@@ -1084,7 +1101,7 @@ def render_search_table(pairs: list[PairSnapshot]) -> Table:
             price = f"${pair.price_usd:,.6f}"
         table.add_row(
             _chain_text(pair.chain_id),
-            Text(_safe_text(pair.base_symbol), style="bold bright_yellow"),
+            Text(_safe_text(pair.base_symbol), style=f"bold {C_GOLD}"),
             price,
             _vol_heat(pair.volume_h24),
             str(pair.txns_h1),
@@ -1108,91 +1125,91 @@ def render_search_table(pairs: list[PairSnapshot]) -> Table:
 
 def render_pair_detail(pair: PairSnapshot, boost_total: float = 0.0, boost_count: int = 0) -> Panel:
     mcap = pair.market_cap if pair.market_cap > 0 else pair.fdv
-    chain_style = CHAIN_STYLES.get(pair.chain_id, "cyan")
+    chain_style = CHAIN_STYLES.get(pair.chain_id, C_LABEL)
     chain_lbl = CHAIN_LABEL.get(pair.chain_id, pair.chain_id.upper()[:4])
 
     content = Text()
 
     # Token identity
-    content.append(f"{_safe_text(pair.base_name)} ", style="bold bright_white")
-    content.append(f"({_safe_text(pair.base_symbol)})", style="bold bright_yellow")
-    content.append("  on  ", style="dim")
+    content.append(f"{_safe_text(pair.base_name)} ", style=f"bold {C_WHITE}")
+    content.append(f"({_safe_text(pair.base_symbol)})", style=f"bold {C_GOLD}")
+    content.append("  on  ", style=C_LABEL)
     content.append(_safe_text(DOT), style=f"bold {chain_style}")
     content.append(f" {_safe_text(chain_lbl)}", style=chain_style)
-    content.append(f" / {_safe_text(pair.dex_id)}\n", style="dim cyan")
-    content.append("Pair: ", style="dim")
-    content.append(f"{_safe_text(pair.pair_address)}\n", style="dim white")
+    content.append(f" / {_safe_text(pair.dex_id)}\n", style=C_DIM)
+    content.append("Pair: ", style=C_LABEL)
+    content.append(f"{_safe_text(pair.pair_address)}\n", style=C_DIM)
 
     # Separator
-    content.append(_safe_text(SEPARATOR * 48) + "\n", style="dim bright_blue")
+    content.append(_safe_text(SEPARATOR * 48) + "\n", style=C_BORDER)
 
     # Price section
-    content.append("Price   ", style="dim")
-    content.append(fmt_price(pair.price_usd), style="bold bright_white")
+    content.append("Price   ", style=C_LABEL)
+    content.append(fmt_price(pair.price_usd), style=f"bold {C_WHITE}")
     content.append("\n")
-    content.append("  1h    ", style="dim")
+    content.append("  1h    ", style=C_LABEL)
     content.append_text(_momentum_text(pair.price_change_h1))
-    content.append("    24h   ", style="dim")
+    content.append("    24h   ", style=C_LABEL)
     content.append_text(_momentum_text(pair.price_change_h24))
     content.append("\n")
 
     # Separator
-    content.append(_safe_text(SEPARATOR * 48) + "\n", style="dim bright_blue")
+    content.append(_safe_text(SEPARATOR * 48) + "\n", style=C_BORDER)
 
     # Volume section
-    content.append("Volume\n", style="bold bright_white")
-    content.append("  24h   ", style="dim")
+    content.append("Volume\n", style=f"bold {C_TEXT}")
+    content.append("  24h   ", style=C_LABEL)
     content.append_text(_vol_heat(pair.volume_h24))
-    content.append("    6h  ", style="dim")
+    content.append("    6h  ", style=C_LABEL)
     content.append_text(_vol_heat(pair.volume_h6))
-    content.append("    1h  ", style="dim")
+    content.append("    1h  ", style=C_LABEL)
     content.append_text(_vol_heat(pair.volume_h1))
     content.append("\n")
 
     # Transaction section
-    content.append("Txns\n", style="bold bright_white")
-    content.append(f"  1h    {pair.txns_h1}", style="white")
-    content.append(f"  (B{pair.buys_h1}/S{pair.sells_h1})", style="dim")
-    content.append(f"    24h   {pair.txns_h24}", style="white")
-    content.append(f"  (B{pair.buys_h24}/S{pair.sells_h24})\n", style="dim")
+    content.append("Txns\n", style=f"bold {C_TEXT}")
+    content.append(f"  1h    {pair.txns_h1}", style=C_TEXT)
+    content.append(f"  (B{pair.buys_h1}/S{pair.sells_h1})", style=C_LABEL)
+    content.append(f"    24h   {pair.txns_h24}", style=C_TEXT)
+    content.append(f"  (B{pair.buys_h24}/S{pair.sells_h24})\n", style=C_LABEL)
 
     # Flow
-    content.append("Flow    ", style="dim")
+    content.append("Flow    ", style=C_LABEL)
     content.append_text(_flow_meter(pair.buys_h1, pair.sells_h1, width=16))
     content.append("\n")
 
     # Separator
-    content.append(_safe_text(SEPARATOR * 48) + "\n", style="dim bright_blue")
+    content.append(_safe_text(SEPARATOR * 48) + "\n", style=C_BORDER)
 
     # Liquidity & market cap
-    content.append("Liq     ", style="dim")
-    content.append(fmt_usd(pair.liquidity_usd), style="bold bright_green")
-    content.append("    MCap/FDV  ", style="dim")
-    content.append(fmt_usd(mcap), style="white")
+    content.append("Liq     ", style=C_LABEL)
+    content.append(fmt_usd(pair.liquidity_usd), style=f"bold {C_GREEN}")
+    content.append("    MCap/FDV  ", style=C_LABEL)
+    content.append(fmt_usd(mcap), style=C_TEXT)
     content.append("\n")
 
     # Holders
-    content.append("Holders ", style="dim")
+    content.append("Holders ", style=C_LABEL)
     content.append_text(_holders_gauge(pair.holders_count))
     if pair.holders_source:
-        content.append(f"  ({pair.holders_source})", style="dim")
+        content.append(f"  ({pair.holders_source})", style=C_DIM)
     content.append("\n")
 
     # Boosts
     if boost_total or boost_count:
-        content.append("Boosts  ", style="dim")
-        content.append(f"total={boost_total:.0f}  count={boost_count}\n", style="bright_yellow")
+        content.append("Boosts  ", style=C_LABEL)
+        content.append(f"total={boost_total:.0f}  count={boost_count}\n", style=C_GOLD)
 
     # Link
     if pair.pair_url:
         content.append("\n")
-        content.append("Dexscreener  ", style="dim")
-        content.append(_safe_text(pair.pair_url), style="bright_blue underline")
+        content.append("Dexscreener  ", style=C_LABEL)
+        content.append(_safe_text(pair.pair_url), style=f"{C_BLUE} underline")
 
     return Panel(
         content,
-        title=f"[bold bright_cyan]{_safe_text(DIAMOND)} Pair Insight[/bold bright_cyan]",
-        border_style="bright_blue",
+        title=f"[bold {C_TEXT}]{_safe_text(DIAMOND)} Pair Insight[/bold {C_TEXT}]",
+        border_style=C_BORDER,
         box=box.HEAVY,
     )
 
@@ -1207,52 +1224,52 @@ def render_distribution_panel(candidate: HotTokenCandidate) -> Panel:
     txt = Text()
 
     if candidate.pair.holders_count is not None:
-        txt.append("Observed holders  ", style="dim")
+        txt.append("Observed holders  ", style=C_LABEL)
         txt.append_text(_holders_gauge(candidate.pair.holders_count))
         if candidate.pair.holders_source:
-            txt.append(f"  ({candidate.pair.holders_source})", style="dim")
+            txt.append(f"  ({candidate.pair.holders_source})", style=C_DIM)
         txt.append("\n")
     else:
-        txt.append("Holder count unavailable for this token/chain via public adapters.\n", style="bold yellow")
+        txt.append("Holder count unavailable for this token/chain via public adapters.\n", style=f"bold {C_GOLD}")
 
-    txt.append(_safe_text(SEPARATOR * 40) + "\n", style="dim magenta")
-    txt.append("Market-structure concentration signals\n", style="bold bright_white")
+    txt.append(_safe_text(SEPARATOR * 40) + "\n", style=C_BORDER)
+    txt.append("Market-structure concentration signals\n", style=f"bold {C_TEXT}")
 
     # Liquidity to market cap
     liq_to_cap = heuristics["liquidity_to_market_cap"]
-    txt.append(f"  {_safe_text(DOT)} liq/mcap       ", style="dim magenta")
+    txt.append(f"  {_safe_text(DOT)} liq/mcap       ", style=C_LABEL)
     liq_val = float(liq_to_cap) if isinstance(liq_to_cap, (int, float)) else 0.0
-    liq_style = "bold bright_green" if liq_val >= 0.1 else "yellow" if liq_val >= 0.03 else "bright_red"
+    liq_style = f"bold {C_GREEN}" if liq_val >= 0.1 else C_GOLD if liq_val >= 0.03 else C_RED
     txt.append(f"{liq_to_cap}\n", style=liq_style)
 
     # Volume to liquidity
     vol_to_liq = heuristics["volume_to_liquidity_24h"]
-    txt.append(f"  {_safe_text(DOT)} vol/liq 24h    ", style="dim magenta")
+    txt.append(f"  {_safe_text(DOT)} vol/liq 24h    ", style=C_LABEL)
     vol_val = float(vol_to_liq) if isinstance(vol_to_liq, (int, float)) else 0.0
-    vol_style = "bright_red" if vol_val > 5 else "yellow" if vol_val > 2 else "bright_green"
+    vol_style = C_RED if vol_val > 5 else C_GOLD if vol_val > 2 else C_GREEN
     txt.append(f"{vol_to_liq}\n", style=vol_style)
 
     # Buy/sell imbalance
     imbalance = heuristics["buy_sell_imbalance_1h"]
-    txt.append(f"  {_safe_text(DOT)} buy/sell 1h    ", style="dim magenta")
+    txt.append(f"  {_safe_text(DOT)} buy/sell 1h    ", style=C_LABEL)
     imb_val = float(imbalance) if isinstance(imbalance, (int, float)) else 0.0
-    imb_style = "bold bright_green" if imb_val > 0.2 else "bright_red" if imb_val < -0.2 else "white"
+    imb_style = f"bold {C_GREEN}" if imb_val > 0.2 else C_RED if imb_val < -0.2 else C_TEXT
     txt.append(f"{imbalance}\n", style=imb_style)
 
     # Status
     status = str(heuristics["status"])
-    txt.append(f"  {_safe_text(DOT)} status         ", style="dim magenta")
+    txt.append(f"  {_safe_text(DOT)} status         ", style=C_LABEL)
     status_style = (
-        "bold bright_green" if status == "balanced"
-        else "bold bright_red" if status == "concentrated-liquidity"
-        else "bold bright_yellow"
+        f"bold {C_GREEN}" if status == "balanced"
+        else f"bold {C_RED}" if status == "concentrated-liquidity"
+        else f"bold {C_GOLD}"
     )
     txt.append(status, style=status_style)
 
     return Panel(
         txt,
-        title=f"[bold bright_magenta]{_safe_text(DIAMOND)} Distribution Proxy[/bold bright_magenta]",
-        border_style="magenta",
+        title=f"[bold {C_PURPLE}]{_safe_text(DIAMOND)} Distribution Proxy[/bold {C_PURPLE}]",
+        border_style=C_BORDER,
         box=box.HEAVY,
     )
 
@@ -1264,12 +1281,12 @@ def render_distribution_panel(candidate: HotTokenCandidate) -> Panel:
 
 def render_chain_heat_table(candidates: list[HotTokenCandidate]) -> Table:
     table = Table(
-        title=f"[bold bright_cyan]{_safe_text(DIAMOND)} Chain Heat[/bold bright_cyan]",
-        box=box.HEAVY,
+        title=f"[bold {C_TEXT}]{_safe_text(DIAMOND)} Chain Heat[/bold {C_TEXT}]",
+        box=box.SIMPLE_HEAVY,
         expand=True,
-        row_styles=["", "dim"],
-        border_style="bright_blue",
-        header_style="bold bright_white",
+        row_styles=["", C_DIM],
+        border_style=C_BORDER,
+        header_style=f"bold {C_TEXT}",
         title_style="",
     )
     table.add_column("Chain", min_width=6)
@@ -1293,8 +1310,8 @@ def render_chain_heat_table(candidates: list[HotTokenCandidate]) -> Table:
         # Heat bar for token count
         heat_bar_w = min(count, 10)
         heat_txt = Text()
-        heat_txt.append(_safe_text(BAR_FILL * heat_bar_w), style="bright_cyan")
-        heat_txt.append(f" {count}", style="bold bright_white")
+        heat_txt.append(_safe_text(BAR_FILL * heat_bar_w), style=C_GREEN)
+        heat_txt.append(f" {count}", style=f"bold {C_TEXT}")
 
         table.add_row(
             _chain_text(chain),
@@ -1317,8 +1334,8 @@ def render_flow_panel(candidates: list[HotTokenCandidate]) -> Panel:
     if not candidates:
         return Panel(
             "No candidates in current filter set.",
-            title=f"[bold bright_cyan]{_safe_text(DIAMOND)} Flow Summary[/bold bright_cyan]",
-            border_style="yellow",
+            title=f"[bold {C_TEXT}]{_safe_text(DIAMOND)} Flow Summary[/bold {C_TEXT}]",
+            border_style=C_BORDER,
             box=box.HEAVY,
         )
 
@@ -1349,26 +1366,26 @@ def render_flow_panel(candidates: list[HotTokenCandidate]) -> Panel:
     text = Text()
 
     # Volume bar
-    text.append("24h Volume    ", style="dim")
+    text.append("24h Volume    ", style=C_LABEL)
     text.append_text(_vol_heat(total_vol))
     text.append("\n")
 
     # Liquidity
-    text.append("Liquidity     ", style="dim")
-    text.append(f"{fmt_usd(total_liq)}", style="bold bright_green")
+    text.append("Liquidity     ", style=C_LABEL)
+    text.append(f"{fmt_usd(total_liq)}", style=f"bold {C_GREEN}")
     text.append("\n")
 
     # Average 1h with arrow
-    text.append("Avg 1h Move   ", style="dim")
+    text.append("Avg 1h Move   ", style=C_LABEL)
     text.append_text(_momentum_text(avg_h1))
     text.append("\n")
 
     # Imbalance with visual bar
-    text.append("Buy/Sell Imb  ", style="dim")
+    text.append("Buy/Sell Imb  ", style=C_LABEL)
     imb_style = (
-        "bold bright_green" if avg_imbalance > 0.1
-        else "bold bright_red" if avg_imbalance < -0.1
-        else "white"
+        f"bold {C_GREEN}" if avg_imbalance > 0.1
+        else f"bold {C_RED}" if avg_imbalance < -0.1
+        else C_TEXT
     )
     # Visual imbalance bar
     bar_w = 10
@@ -1377,36 +1394,36 @@ def render_flow_panel(candidates: list[HotTokenCandidate]) -> Panel:
     fill_pos = min(fill_pos, center)
     if avg_imbalance >= 0:
         bar_txt = Text()
-        bar_txt.append(_safe_text(BAR_EMPTY * center), style="dim")
-        bar_txt.append(_safe_text(BAR_FILL * fill_pos), style="bright_green")
-        bar_txt.append(_safe_text(BAR_EMPTY * (center - fill_pos)), style="dim")
+        bar_txt.append(_safe_text(BAR_EMPTY * center), style=C_DIM)
+        bar_txt.append(_safe_text(BAR_FILL * fill_pos), style=C_GREEN)
+        bar_txt.append(_safe_text(BAR_EMPTY * (center - fill_pos)), style=C_DIM)
     else:
         bar_txt = Text()
-        bar_txt.append(_safe_text(BAR_EMPTY * (center - fill_pos)), style="dim")
-        bar_txt.append(_safe_text(BAR_FILL * fill_pos), style="bright_red")
-        bar_txt.append(_safe_text(BAR_EMPTY * center), style="dim")
+        bar_txt.append(_safe_text(BAR_EMPTY * (center - fill_pos)), style=C_DIM)
+        bar_txt.append(_safe_text(BAR_FILL * fill_pos), style=C_RED)
+        bar_txt.append(_safe_text(BAR_EMPTY * center), style=C_DIM)
     text.append_text(bar_txt)
     text.append(f" {avg_imbalance:+.2f}\n", style=imb_style)
 
-    text.append(_safe_text(SEPARATOR * 36) + "\n", style="dim bright_blue")
+    text.append(_safe_text(SEPARATOR * 36) + "\n", style=C_BORDER)
 
     # Regime
-    text.append("Regime        ", style="dim")
+    text.append("Regime        ", style=C_LABEL)
     regime_style = (
-        "bold bright_green" if regime == "trend-up"
-        else "bold bright_red" if regime == "trend-down"
-        else "bold bright_yellow"
+        f"bold {C_GREEN}" if regime == "trend-up"
+        else f"bold {C_RED}" if regime == "trend-down"
+        else f"bold {C_GOLD}"
     )
     text.append(f"{regime}\n", style=regime_style)
 
     # Flags with dot indicators
-    flag_style = "bold magenta"
+    flag_style = C_PURPLE
     if "sell-pressure" in market_flags:
-        flag_style = "bold bright_red"
+        flag_style = f"bold {C_RED}"
     elif "balanced" in market_flags:
-        flag_style = "bold bright_green"
+        flag_style = f"bold {C_GREEN}"
 
-    text.append("Flags         ", style="dim")
+    text.append("Flags         ", style=C_LABEL)
     for i, flag in enumerate(market_flags):
         if i > 0:
             text.append("  ", style="")
@@ -1415,7 +1432,7 @@ def render_flow_panel(candidates: list[HotTokenCandidate]) -> Panel:
 
     return Panel(
         text,
-        title=f"[bold bright_cyan]{_safe_text(DIAMOND)} Flow Summary[/bold bright_cyan]",
-        border_style="bright_blue",
+        title=f"[bold {C_TEXT}]{_safe_text(DIAMOND)} Flow Summary[/bold {C_TEXT}]",
+        border_style=C_BORDER,
         box=box.HEAVY,
     )
