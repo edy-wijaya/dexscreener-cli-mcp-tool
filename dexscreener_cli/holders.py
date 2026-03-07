@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from time import monotonic
 from typing import Any
 
@@ -13,6 +12,24 @@ from .models import PairSnapshot
 # ---------------------------------------------------------------------------
 # Provider config
 # ---------------------------------------------------------------------------
+
+# GeckoTerminal chain IDs (free, no key, all chains)
+GECKO_CHAIN_IDS: dict[str, str] = {
+    "solana": "solana",
+    "ethereum": "eth",
+    "base": "base",
+    "bsc": "bsc",
+    "polygon": "polygon_pos",
+    "arbitrum": "arbitrum",
+    "optimism": "optimism",
+    "avalanche": "avax",
+}
+
+# Blockscout (ETH + Base, completely free, no key)
+BLOCKSCOUT_URLS: dict[str, str] = {
+    "ethereum": "https://eth.blockscout.com",
+    "base": "https://base.blockscout.com",
+}
 
 # Honeypot.is (EVM only, no key needed)
 HONEYPOT_CHAIN_IDS: dict[str, int] = {
@@ -28,24 +45,6 @@ HONEYPOT_CHAIN_IDS: dict[str, int] = {
     "zksync": 324,
     "mantle": 5000,
 }
-
-# Blockscout (ETH + Base, completely free, no key)
-BLOCKSCOUT_URLS: dict[str, str] = {
-    "ethereum": "https://eth.blockscout.com",
-    "base": "https://base.blockscout.com",
-}
-
-# Moralis (all chains, free key from moralis.com)
-MORALIS_EVM_CHAINS: dict[str, str] = {
-    "ethereum": "0x1",
-    "bsc": "0x38",
-    "base": "0x2105",
-    "polygon": "0x89",
-    "arbitrum": "0xa4b1",
-    "optimism": "0xa",
-    "avalanche": "0xa86a",
-}
-MORALIS_SOLANA_NETWORKS = {"solana": "mainnet"}
 
 # ---------------------------------------------------------------------------
 # Shared config
@@ -87,8 +86,35 @@ async def _cache_set(chain_id: str, token_address: str, holders_count: int | Non
         )
 
 
-def _get_moralis_key() -> str | None:
-    return os.environ.get("MORALIS_API_KEY", "").strip() or None
+# ---------------------------------------------------------------------------
+# Provider: GeckoTerminal (all chains, free, no key)
+# ---------------------------------------------------------------------------
+
+async def _fetch_gecko(
+    chain_id: str,
+    token_address: str,
+    client: httpx.AsyncClient,
+) -> int | None:
+    network = GECKO_CHAIN_IDS.get(chain_id)
+    if not network:
+        return None
+    try:
+        resp = await client.get(
+            f"https://api.geckoterminal.com/api/v2/networks/{network}/tokens/{token_address}/info",
+            headers={"Accept": "application/json"},
+        )
+        if resp.status_code >= 400:
+            return None
+        data = resp.json()
+        attrs = data.get("data", {}).get("attributes", {})
+        holders = attrs.get("holders")
+        if isinstance(holders, dict):
+            count = holders.get("count")
+            if count is not None:
+                return int(count)
+    except Exception:
+        pass
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -112,57 +138,6 @@ async def _fetch_blockscout(
             return None
         data = resp.json()
         raw = data.get("holders_count") or data.get("holders")
-        if raw is not None:
-            return int(raw)
-    except Exception:
-        pass
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Provider: Moralis (all chains, free API key)
-# ---------------------------------------------------------------------------
-
-async def _fetch_moralis(
-    chain_id: str,
-    token_address: str,
-    api_key: str,
-    client: httpx.AsyncClient,
-) -> int | None:
-    headers = {"Accept": "application/json", "X-API-Key": api_key}
-
-    # Solana
-    network = MORALIS_SOLANA_NETWORKS.get(chain_id)
-    if network:
-        try:
-            resp = await client.get(
-                f"https://solana-gateway.moralis.io/token/{network}/{token_address}/holders",
-                headers=headers,
-            )
-            if resp.status_code >= 400:
-                return None
-            data = resp.json()
-            raw = data.get("totalHolders") or data.get("total_holders") or data.get("total")
-            if raw is not None:
-                return int(raw)
-        except Exception:
-            pass
-        return None
-
-    # EVM
-    chain_hex = MORALIS_EVM_CHAINS.get(chain_id)
-    if not chain_hex:
-        return None
-    try:
-        resp = await client.get(
-            f"https://deep-index.moralis.io/api/v2.2/erc20/{token_address}/owners",
-            params={"chain": chain_hex, "limit": "1"},
-            headers=headers,
-        )
-        if resp.status_code >= 400:
-            return None
-        data = resp.json()
-        raw = data.get("total")
         if raw is not None:
             return int(raw)
     except Exception:
@@ -237,14 +212,12 @@ async def fetch_holder_count(
     try:
         await _holder_limiter.acquire()
 
-        moralis_key = _get_moralis_key()
-
-        # 1. Moralis (if key set) — covers all chains including Solana
-        if moralis_key:
-            count = await _fetch_moralis(normalized_chain, normalized_token, moralis_key, http_client)
+        # 1. GeckoTerminal (free, no key, all chains)
+        if normalized_chain in GECKO_CHAIN_IDS:
+            count = await _fetch_gecko(normalized_chain, normalized_token, http_client)
             if count is not None and count > 0:
-                await _cache_set(normalized_chain, normalized_token, count, "moralis")
-                return count, "moralis"
+                await _cache_set(normalized_chain, normalized_token, count, "geckoterminal")
+                return count, "geckoterminal"
 
         # 2. Blockscout (ETH + Base, free, no key)
         if normalized_chain in BLOCKSCOUT_URLS:

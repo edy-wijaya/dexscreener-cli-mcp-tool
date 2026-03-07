@@ -573,12 +573,6 @@ def render_status_footer(
     else:
         txt.append("one-shot scan", style=C_DIM)
 
-    # Holder API hint
-    moralis_key = os.environ.get("MORALIS_API_KEY", "").strip()
-    if not moralis_key:
-        txt.append(_safe_text(f"  {VLINE}  "), style=C_BORDER)
-        txt.append("holders: set MORALIS_API_KEY for SOL/BSC", style=C_DIM)
-
     return Panel(
         txt,
         border_style=C_BORDER_DIM,
