@@ -4,7 +4,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from .alerts import send_test_alert
+from .alerts import send_test_alert, validate_webhook_url
 from .client import DexScreenerClient
 from .config import DEFAULT_CHAINS, ScanFilters
 from .models import HotTokenCandidate
@@ -68,9 +68,23 @@ def _serialize_candidate(candidate: HotTokenCandidate) -> dict[str, Any]:
     }
 
 
+_MAX_NAME_LEN = 200
+_MAX_TEMPLATE_LEN = 2000
+_MAX_CHAINS_LEN = 500
+_MAX_NOTES_LEN = 1000
+
+
+def _clamp_str(value: str, max_len: int, label: str = "value") -> str:
+    """Truncate a string to max_len and warn if it was too long."""
+    if len(value) > max_len:
+        return value[:max_len]
+    return value
+
+
 def _parse_chains(raw: str | None) -> tuple[str, ...]:
     if not raw:
         return DEFAULT_CHAINS
+    raw = _clamp_str(raw, _MAX_CHAINS_LEN, "chains")
     values = tuple(c.strip().lower() for c in raw.split(",") if c.strip())
     return values or DEFAULT_CHAINS
 
@@ -227,6 +241,7 @@ async def save_preset(
     Use this when a user says "save these settings", "create a preset", etc.
     The preset named "default" is auto-loaded on every scan.
     """
+    name = _clamp_str(name, _MAX_NAME_LEN, "name")
     filters = ScanFilters(
         chains=_parse_chains(chains),
         limit=limit,
@@ -284,6 +299,15 @@ async def create_task(
     Use this when a user says "set up alerts", "monitor for new tokens",
     "notify me when something hot appears", etc.
     """
+    name = _clamp_str(name, _MAX_NAME_LEN, "name")
+    notes = _clamp_str(notes, _MAX_NOTES_LEN, "notes")
+    if alert_template:
+        alert_template = _clamp_str(alert_template, _MAX_TEMPLATE_LEN, "alert_template")
+    # Validate webhook URLs at storage time to prevent SSRF.
+    if webhook_url:
+        validate_webhook_url(webhook_url)
+    if discord_webhook_url:
+        validate_webhook_url(discord_webhook_url)
     store = StateStore()
     overrides: dict[str, Any] = {}
     if chains:
@@ -485,6 +509,13 @@ async def import_state_bundle(bundle: dict[str, Any], mode: str = "merge") -> di
     """
     if mode not in {"merge", "replace"}:
         return {"error": "Invalid mode. Use merge or replace."}
+    # Bound imported items to prevent resource exhaustion.
+    _MAX_IMPORT_PRESETS = 100
+    _MAX_IMPORT_TASKS = 500
+    if len(bundle.get("presets", [])) > _MAX_IMPORT_PRESETS:
+        return {"error": f"Bundle exceeds max {_MAX_IMPORT_PRESETS} presets"}
+    if len(bundle.get("tasks", [])) > _MAX_IMPORT_TASKS:
+        return {"error": f"Bundle exceeds max {_MAX_IMPORT_TASKS} tasks"}
     store = StateStore()
     counts = store.import_bundle(bundle, mode=mode)  # type: ignore[arg-type]
     return {"ok": True, "mode": mode, "counts": counts}
