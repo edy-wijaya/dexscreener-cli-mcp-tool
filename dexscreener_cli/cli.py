@@ -117,14 +117,14 @@ NEW_TOKEN_SEARCH_QUERIES: tuple[str, ...] = (
 )
 SCAN_PROFILE_NAMES: tuple[str, ...] = ("strict", "balanced", "discovery")
 SCAN_PROFILE_BASELINES: dict[str, dict[str, float]] = {
-    "strict": {"min_liquidity_usd": 40_000.0, "min_volume_h24_usd": 120_000.0, "min_txns_h1": 110.0},
-    "balanced": {"min_liquidity_usd": 28_000.0, "min_volume_h24_usd": 70_000.0, "min_txns_h1": 55.0},
-    "discovery": {"min_liquidity_usd": 15_000.0, "min_volume_h24_usd": 20_000.0, "min_txns_h1": 12.0},
+    "strict": {"min_liquidity_usd": 35_000.0, "min_volume_h24_usd": 90_000.0, "min_txns_h1": 50.0},
+    "balanced": {"min_liquidity_usd": 20_000.0, "min_volume_h24_usd": 40_000.0, "min_txns_h1": 25.0},
+    "discovery": {"min_liquidity_usd": 8_000.0, "min_volume_h24_usd": 10_000.0, "min_txns_h1": 5.0},
 }
 NEW_COIN_PROFILE_BASELINES: dict[str, dict[str, float]] = {
-    "strict": {"min_liquidity_usd": 35_000.0, "min_volume_h24_usd": 25_000.0, "min_txns_h24": 220.0},
-    "balanced": {"min_liquidity_usd": 25_000.0, "min_volume_h24_usd": 6_000.0, "min_txns_h24": 80.0},
-    "discovery": {"min_liquidity_usd": 12_000.0, "min_volume_h24_usd": 1_500.0, "min_txns_h24": 20.0},
+    "strict": {"min_liquidity_usd": 25_000.0, "min_volume_h24_usd": 10_000.0, "min_txns_h24": 100.0},
+    "balanced": {"min_liquidity_usd": 10_000.0, "min_volume_h24_usd": 1_500.0, "min_txns_h24": 20.0},
+    "discovery": {"min_liquidity_usd": 3_000.0, "min_volume_h24_usd": 200.0, "min_txns_h24": 3.0},
 }
 CHAIN_PROFILE_MULTIPLIER: dict[str, float] = {
     "solana": 1.0,

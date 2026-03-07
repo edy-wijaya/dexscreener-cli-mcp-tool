@@ -22,7 +22,7 @@ RETRY_BACKOFF_SECONDS: Final[float] = 0.5
 class ScanFilters:
     chains: tuple[str, ...]
     limit: int = 20
-    min_liquidity_usd: float = 35_000.0
-    min_volume_h24_usd: float = 90_000.0
-    min_txns_h1: int = 50
+    min_liquidity_usd: float = 20_000.0
+    min_volume_h24_usd: float = 40_000.0
+    min_txns_h1: int = 30
     min_price_change_h1: float = -5.0

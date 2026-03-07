@@ -16,9 +16,9 @@ from .task_runner import execute_task_once, select_due_tasks
 mcp = FastMCP("dexscreener-cli-mcp-tool")
 SCAN_PROFILE_NAMES: tuple[str, ...] = ("strict", "balanced", "discovery")
 SCAN_PROFILE_BASELINES: dict[str, dict[str, float]] = {
-    "strict": {"min_liquidity_usd": 40_000.0, "min_volume_h24_usd": 120_000.0, "min_txns_h1": 110.0},
-    "balanced": {"min_liquidity_usd": 28_000.0, "min_volume_h24_usd": 70_000.0, "min_txns_h1": 55.0},
-    "discovery": {"min_liquidity_usd": 15_000.0, "min_volume_h24_usd": 20_000.0, "min_txns_h1": 12.0},
+    "strict": {"min_liquidity_usd": 35_000.0, "min_volume_h24_usd": 90_000.0, "min_txns_h1": 50.0},
+    "balanced": {"min_liquidity_usd": 20_000.0, "min_volume_h24_usd": 40_000.0, "min_txns_h1": 25.0},
+    "discovery": {"min_liquidity_usd": 8_000.0, "min_volume_h24_usd": 10_000.0, "min_txns_h1": 5.0},
 }
 
 
@@ -137,10 +137,10 @@ def _build_alert_config(
 async def scan_hot_tokens(
     chains: str = ",".join(DEFAULT_CHAINS),
     limit: int = 20,
-    min_liquidity_usd: float = 35_000.0,
-    min_volume_h24_usd: float = 90_000.0,
-    min_txns_h1: int = 80,
-    min_price_change_h1: float = 0.0,
+    min_liquidity_usd: float = 20_000.0,
+    min_volume_h24_usd: float = 40_000.0,
+    min_txns_h1: int = 30,
+    min_price_change_h1: float = -10.0,
 ) -> list[dict[str, Any]]:
     """Scan and rank the hottest tokens on Dexscreener right now.
 
@@ -206,10 +206,10 @@ async def save_preset(
     name: str,
     chains: str = ",".join(DEFAULT_CHAINS),
     limit: int = 20,
-    min_liquidity_usd: float = 35_000.0,
-    min_volume_h24_usd: float = 90_000.0,
-    min_txns_h1: int = 80,
-    min_price_change_h1: float = 0.0,
+    min_liquidity_usd: float = 20_000.0,
+    min_volume_h24_usd: float = 40_000.0,
+    min_txns_h1: int = 30,
+    min_price_change_h1: float = -10.0,
 ) -> dict[str, Any]:
     """Save a named scan preset with custom filter thresholds.
 
