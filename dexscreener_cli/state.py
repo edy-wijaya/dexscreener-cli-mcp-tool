@@ -4,7 +4,7 @@ import json
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 from uuid import uuid4
 
 from .config import DEFAULT_CHAINS, ScanFilters
@@ -416,12 +416,33 @@ class StateStore:
         return run
 
     # State snapshot
+    _REDACTED_ALERT_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "webhook_url",
+            "discord_webhook_url",
+            "telegram_bot_token",
+            "telegram_chat_id",
+        }
+    )
+
+    @classmethod
+    def _redact_task(cls, task_dict: dict[str, Any]) -> dict[str, Any]:
+        """Strip sensitive alert credentials from a task dict for safe export."""
+        alerts = task_dict.get("alerts")
+        if not alerts or not isinstance(alerts, dict):
+            return task_dict
+        cleaned = {k: v for k, v in alerts.items() if k not in cls._REDACTED_ALERT_KEYS}
+        # Leave a marker so the importer knows credentials were stripped.
+        if any(k in alerts for k in cls._REDACTED_ALERT_KEYS):
+            cleaned["_redacted"] = True
+        return {**task_dict, "alerts": cleaned}
+
     def export_bundle(self) -> dict[str, Any]:
         return {
             "version": 1,
             "exported_at": utc_now_iso(),
             "presets": [p.to_dict() for p in self.list_presets()],
-            "tasks": [t.to_dict() for t in self.list_tasks()],
+            "tasks": [self._redact_task(t.to_dict()) for t in self.list_tasks()],
             "runs": [r.to_dict() for r in self.list_runs(limit=50_000)],
         }
 
