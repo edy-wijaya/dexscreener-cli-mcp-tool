@@ -195,15 +195,27 @@ def _momentum_text(value: float) -> Text:
     return txt
 
 
-def _vol_heat(value: float) -> Text:
-    """Volume with heat-level styling."""
+def _vol_heat(value: float, *, mini_bar: bool = False) -> Text:
+    """Volume with heat-level styling and optional mini-bar prefix."""
     if value >= 10_000_000:
-        return Text(fmt_usd(value), style="bold bright_cyan")
-    if value >= 1_000_000:
-        return Text(fmt_usd(value), style="bright_cyan")
-    if value >= 100_000:
-        return Text(fmt_usd(value), style="cyan")
-    return Text(fmt_usd(value), style="dim cyan")
+        style = "bold bright_cyan"
+        tier = 3
+    elif value >= 1_000_000:
+        style = "bright_cyan"
+        tier = 2
+    elif value >= 100_000:
+        style = "cyan"
+        tier = 1
+    else:
+        style = "dim cyan"
+        tier = 0
+    txt = Text()
+    if mini_bar:
+        bar = BAR_FILL * tier + BAR_EMPTY * (3 - tier)
+        txt.append(_safe_text(bar), style=style)
+        txt.append(" ", style="")
+    txt.append(fmt_usd(value), style=style)
+    return txt
 
 
 def _age_badge(hours: float | None) -> Text:
@@ -336,6 +348,27 @@ def _signal_badge(tags: list[str], discovery: str) -> Text:
     return txt
 
 
+def _liq_bar(value: float) -> Text:
+    """Liquidity with mini tier bar prefix."""
+    tier_bar_w = 3
+    if value >= 500_000:
+        bar = BAR_FILL * tier_bar_w
+        style = "bold bright_green"
+    elif value >= 100_000:
+        bar = BAR_FILL * 2 + BAR_EMPTY * 1
+        style = "bright_green"
+    elif value >= 30_000:
+        bar = BAR_FILL * 1 + BAR_EMPTY * 2
+        style = "yellow"
+    else:
+        bar = BAR_EMPTY * tier_bar_w
+        style = "bright_red"
+    txt = Text()
+    txt.append(_safe_text(bar), style=style)
+    txt.append(f" {fmt_usd(value)}", style=style)
+    return txt
+
+
 def _holders_gauge(value: int | None) -> Text:
     """Holder count with mini visual tier bar."""
     if value is None:
@@ -395,6 +428,152 @@ def build_header() -> Panel:
     return Panel(
         content,
         border_style="bright_blue",
+        box=box.HEAVY,
+        padding=(0, 1),
+    )
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Scan summary (Performance KPI panel)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+def render_scan_summary(candidates: list[HotTokenCandidate]) -> Panel:
+    """Performance-style KPI grid inspired by bankroll tracker reference."""
+    if not candidates:
+        return Panel(
+            Text("Waiting for scan data...", style="dim"),
+            title=f"[bold bright_cyan]{_safe_text(SEPARATOR * 3)} Performance {_safe_text(SEPARATOR * 3)}[/bold bright_cyan]",
+            border_style="bright_blue",
+            box=box.HEAVY,
+        )
+
+    total_vol = sum(c.pair.volume_h24 for c in candidates)
+    total_liq = sum(c.pair.liquidity_usd for c in candidates)
+    avg_score = sum(c.score for c in candidates) / len(candidates)
+    avg_h1 = sum(c.pair.price_change_h1 for c in candidates) / len(candidates)
+
+    # Top mover
+    top = max(candidates, key=lambda c: abs(c.pair.price_change_h1))
+
+    # Buy pressure aggregate
+    total_buys = sum(c.pair.buys_h1 for c in candidates)
+    total_sells = sum(c.pair.sells_h1 for c in candidates)
+    total_txns = max(total_buys + total_sells, 1)
+    buy_ratio = total_buys / total_txns
+
+    # Hot chain
+    chain_counts: dict[str, int] = defaultdict(int)
+    for c in candidates:
+        chain_counts[c.pair.chain_id] += 1
+    hot_chain = max(chain_counts, key=chain_counts.get)  # type: ignore[arg-type]
+
+    # Build two-column grid
+    grid = Table(
+        show_header=False,
+        box=None,
+        padding=(0, 2),
+        expand=True,
+        show_edge=False,
+    )
+    grid.add_column("lbl1", style="dim", min_width=14)
+    grid.add_column("val1", min_width=18)
+    grid.add_column("sep", width=1, style="dim bright_blue")
+    grid.add_column("lbl2", style="dim", min_width=14)
+    grid.add_column("val2", min_width=18)
+
+    # Row 1: Tokens Found | Top Mover
+    tokens_txt = Text()
+    count = len(candidates)
+    if count >= 15:
+        tokens_txt.append(str(count), style="bold bright_green")
+    elif count >= 5:
+        tokens_txt.append(str(count), style="bold bright_yellow")
+    else:
+        tokens_txt.append(str(count), style="bold bright_red")
+
+    top_txt = Text()
+    top_txt.append(_safe_text(top.pair.base_symbol), style="bold bright_yellow")
+    top_txt.append("  ", style="")
+    top_txt.append_text(_momentum_text(top.pair.price_change_h1))
+
+    grid.add_row("Tokens Found", tokens_txt, _safe_text(VLINE), "Top Mover", top_txt)
+
+    # Row 2: Total 24h Vol | Buy Pressure
+    buy_txt = Text()
+    buy_bar_w = 8
+    buy_filled = int(round(buy_ratio * buy_bar_w))
+    sell_filled = buy_bar_w - buy_filled
+    buy_style = "bright_green" if buy_ratio >= 0.55 else "yellow" if buy_ratio >= 0.45 else "bright_red"
+    sell_style = "bright_red" if buy_ratio < 0.45 else "red" if buy_ratio < 0.55 else "bright_red"
+    buy_txt.append(_safe_text(BAR_FILL * buy_filled), style=buy_style)
+    buy_txt.append(_safe_text(BAR_FILL * sell_filled), style=sell_style)
+    buy_txt.append(f" {buy_ratio * 100:.0f}%", style=f"bold {buy_style}")
+
+    grid.add_row("Total 24h Vol", _vol_heat(total_vol), _safe_text(VLINE), "Buy Pressure", buy_txt)
+
+    # Row 3: Total Liquidity | Hot Chain
+    liq_txt = Text(fmt_usd(total_liq), style="bold bright_green")
+    hot_chain_txt = _chain_text(hot_chain)
+    chain_count_txt = Text()
+    chain_count_txt.append_text(hot_chain_txt)
+    chain_count_txt.append(f"  ({chain_counts[hot_chain]} tokens)", style="dim")
+
+    grid.add_row("Total Liquidity", liq_txt, _safe_text(VLINE), "Hot Chain", chain_count_txt)
+
+    # Row 4: Avg Score | Avg 1h Move
+    grid.add_row("Avg Score", _score_gauge(avg_score, width=8), _safe_text(VLINE), "Avg 1h Move", _momentum_text(avg_h1))
+
+    return Panel(
+        grid,
+        title=f"[bold bright_cyan]{_safe_text(SEPARATOR * 3)} Performance {_safe_text(SEPARATOR * 3)}[/bold bright_cyan]",
+        border_style="bright_blue",
+        box=box.HEAVY,
+        padding=(0, 1),
+    )
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Status footer
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+def render_status_footer(
+    *,
+    interval: float | None = None,
+    chains: tuple[str, ...] = (),
+    profile: str = "",
+) -> Panel:
+    """Styled status footer with scan metadata."""
+    now = datetime.now(UTC).strftime("%H:%M:%S")
+    txt = Text()
+
+    # Left: profile + chains
+    if profile:
+        txt.append(_safe_text(f"{DOT} "), style="dim bright_cyan")
+        txt.append(profile.upper(), style="bold bright_cyan")
+        txt.append("  ", style="")
+    if chains:
+        chain_labels = ", ".join(CHAIN_LABEL.get(c, c.upper()[:4]) for c in chains)
+        txt.append(_safe_text(f"{VLINE} "), style="dim")
+        txt.append(chain_labels, style="bright_blue")
+
+    # Center: timestamp
+    txt.append(_safe_text(f"  {VLINE}  "), style="dim")
+    txt.append(now, style="dim cyan")
+
+    # Right: interval or static
+    txt.append(_safe_text(f"  {VLINE}  "), style="dim")
+    if interval is not None:
+        txt.append(f"refresh {interval:.0f}s", style="dim")
+        txt.append(_safe_text(f"  {DOT}  "), style="dim")
+        txt.append("Ctrl+C to exit", style="dim bright_yellow")
+    else:
+        txt.append("one-shot scan", style="dim")
+
+    return Panel(
+        txt,
+        border_style="dim bright_blue",
         box=box.HEAVY,
         padding=(0, 1),
     )
@@ -485,10 +664,10 @@ def render_hot_table(
                 token_text,
                 _score_gauge(candidate.score),
                 h1,
-                _vol_heat(p.volume_h24),
+                _vol_heat(p.volume_h24, mini_bar=True),
                 str(p.txns_h1),
-                Text(fmt_usd(p.liquidity_usd), style=liq_style),
-                holders_text(p.holders_count),
+                _liq_bar(p.liquidity_usd),
+                _holders_gauge(p.holders_count),
                 fmt_price(p.price_usd),
                 fmt_usd(p.market_cap if p.market_cap > 0 else p.fdv),
                 boost,

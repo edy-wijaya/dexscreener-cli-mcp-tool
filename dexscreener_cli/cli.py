@@ -39,6 +39,8 @@ from .ui import (
     render_rank_movers_table,
     render_new_runner_spotlight,
     render_new_runners_table,
+    render_scan_summary,
+    render_status_footer,
     render_top_runner_cards,
     render_pair_detail,
     render_search_table,
@@ -617,6 +619,7 @@ async def _scan_new_launches(
 
 def _render_scan_board(candidates: list[HotTokenCandidate], filters: ScanFilters) -> None:
     console.print(build_header())
+    console.print(render_scan_summary(candidates))
     console.print(
         render_hot_table(
             candidates,
@@ -628,6 +631,7 @@ def _render_scan_board(candidates: list[HotTokenCandidate], filters: ScanFilters
         )
     )
     console.print(Columns([render_chain_heat_table(candidates), render_flow_panel(candidates)]))
+    console.print(render_status_footer(chains=filters.chains))
 
 
 def _render_ai_board(
@@ -1507,6 +1511,7 @@ def watch(
                     candidates = await scanner.scan(filters)
                     view = Group(
                         build_header(),
+                        render_scan_summary(candidates),
                         render_hot_table(
                             candidates,
                             chains=filters.chains,
@@ -1516,9 +1521,9 @@ def watch(
                             min_txns_h1=filters.min_txns_h1,
                         ),
                         Columns([render_chain_heat_table(candidates), render_flow_panel(candidates)]),
-                        Panel(
-                            f"Refreshing every {interval:.1f}s. Press Ctrl+C to exit.",
-                            border_style="dim",
+                        render_status_footer(
+                            interval=interval,
+                            chains=filters.chains,
                         ),
                     )
                     live.update(view)
