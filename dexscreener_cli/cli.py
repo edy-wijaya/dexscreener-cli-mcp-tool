@@ -1074,6 +1074,135 @@ def setup() -> None:
     console.print("Run [bold]ds setup[/bold] again anytime to recalibrate.\n")
 
 
+# ── Update command ────────────────────────────────────────────────────
+
+@app.command("update")
+def update() -> None:
+    """Pull latest version from git and reinstall."""
+    import subprocess
+    repo_root = Path(__file__).resolve().parent.parent
+    console.print(build_header())
+    console.print()
+    console.print("[bold]Updating Dex Scanner...[/bold]\n")
+
+    # Git pull
+    try:
+        result = subprocess.run(
+            ["git", "pull", "--ff-only"],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            console.print(f"[green]Git pull:[/green] {result.stdout.strip()}")
+        else:
+            console.print(f"[yellow]Git pull warning:[/yellow] {result.stderr.strip()}")
+    except FileNotFoundError:
+        console.print("[yellow]Git not found, skipping pull.[/yellow]")
+    except Exception as exc:
+        console.print(f"[yellow]Git pull failed: {exc}[/yellow]")
+
+    # Reinstall package
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-e", ".", "--quiet"],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode == 0:
+            console.print("[green]Dependencies reinstalled.[/green]")
+        else:
+            console.print(f"[red]pip install failed:[/red] {result.stderr.strip()}")
+    except Exception as exc:
+        console.print(f"[red]Install failed: {exc}[/red]")
+
+    console.print("\n[bold #4ade80]Update complete![/bold #4ade80] Restart your terminal to use the new version.\n")
+
+
+# ── Doctor command ────────────────────────────────────────────────────
+
+@app.command("doctor")
+def doctor() -> None:
+    """Diagnose common issues and verify your setup."""
+    import subprocess
+    console.print(build_header())
+    console.print()
+    console.print("[bold]Running diagnostics...[/bold]\n")
+    checks: list[tuple[str, bool, str]] = []
+
+    # 1. Python version
+    py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    py_ok = sys.version_info >= (3, 11)
+    checks.append(("Python 3.11+", py_ok, py_ver))
+
+    # 2. Required packages
+    for pkg in ("httpx", "rich", "typer", "mcp", "dotenv"):
+        mod_name = "dotenv" if pkg == "dotenv" else pkg
+        try:
+            __import__(mod_name)
+            checks.append((f"Package: {pkg}", True, "installed"))
+        except ImportError:
+            checks.append((f"Package: {pkg}", False, "missing"))
+
+    # 3. API connectivity
+    import httpx as _httpx
+    try:
+        resp = _httpx.get("https://api.dexscreener.com/token-boosts/top/v1", timeout=10)
+        checks.append(("Dexscreener API", resp.status_code == 200, f"HTTP {resp.status_code}"))
+    except Exception as exc:
+        checks.append(("Dexscreener API", False, str(exc)[:60]))
+
+    # 4. Environment variables
+    import os
+    moralis_key = os.environ.get("MORALIS_API_KEY", "").strip()
+    checks.append(("MORALIS_API_KEY", bool(moralis_key), "set" if moralis_key else "not set (optional)"))
+
+    # 5. Default preset
+    store = StateStore()
+    default_preset = store.get_preset("default")
+    checks.append(("Default preset", default_preset is not None,
+                    "configured" if default_preset else "not set (run ds setup)"))
+
+    # 6. Git
+    try:
+        result = subprocess.run(["git", "--version"], capture_output=True, text=True, timeout=5)
+        checks.append(("Git", result.returncode == 0, result.stdout.strip()))
+    except Exception:
+        checks.append(("Git", False, "not found (needed for ds update)"))
+
+    # 7. State directory
+    state_dir = store.base_dir
+    checks.append(("State dir", state_dir.exists(), str(state_dir)))
+
+    # Render
+    table = Table(
+        title="[bold #e5e7eb]Diagnostics[/bold #e5e7eb]",
+        box=box.HEAVY,
+        border_style="#3a3d4a",
+        header_style="bold #e5e7eb",
+    )
+    table.add_column("Check", style="bold")
+    table.add_column("Status", justify="center")
+    table.add_column("Detail")
+
+    for label, ok, detail in checks:
+        status = Text("PASS", style="bold #4ade80") if ok else Text("WARN", style="bold #fbbf24")
+        table.add_row(label, status, detail)
+
+    console.print(table)
+
+    fails = sum(1 for _, ok, _ in checks if not ok)
+    if fails == 0:
+        console.print("\n[bold #4ade80]All checks passed![/bold #4ade80] Your scanner is ready.\n")
+    else:
+        console.print(f"\n[bold #fbbf24]{fails} warning(s).[/bold #fbbf24] See details above.\n")
+        if not default_preset:
+            console.print("  Tip: Run [bold]ds setup[/bold] to configure your scanner.\n")
+
+
 @app.command("hot")
 def hot(
     chains: Annotated[str | None, typer.Option(help="Comma-separated chain IDs")] = None,
