@@ -59,14 +59,18 @@ def _quickstart_prefix(platform: str) -> str:
         return r".\.venv\Scripts\ds.exe"
     if platform == "windows-powershell":
         return r".\.venv\Scripts\ds.exe"
-    return "ds"
+    return "./.venv/bin/ds"
 
 
 def _quickstart_commands(platform: str, goal: str) -> list[str]:
     selected_platform = _quickstart_platform(platform)
     selected_goal = _quickstart_goal(goal)
     prefix = _quickstart_prefix(selected_platform)
-    _cli_path, mcp_path = _quickstart_paths(selected_platform)
+    mcp_prefix = (
+        r".\.venv\Scripts\dexscreener-mcp.exe"
+        if selected_platform in {"windows-cmd", "windows-powershell"}
+        else "./.venv/bin/dexscreener-mcp"
+    )
     live = (
         f"{prefix} new-runners-watch --chain=solana --watch-chains=solana,base "
         "--profile=discovery --max-age-hours=48 --include-unknown-age --interval=2"
@@ -75,7 +79,7 @@ def _quickstart_commands(platform: str, goal: str) -> list[str]:
     if selected_goal == "hot":
         return [_quickstart_cd(selected_platform), f"{prefix} doctor", hot]
     if selected_goal == "mcp":
-        return [_quickstart_cd(selected_platform), f"{prefix} doctor", mcp_path]
+        return [_quickstart_cd(selected_platform), f"{prefix} doctor", mcp_prefix]
     if selected_goal == "all":
         return [_quickstart_cd(selected_platform), f"{prefix} doctor", f"{prefix} setup", hot, live]
     return [_quickstart_cd(selected_platform), f"{prefix} doctor", live]
@@ -841,13 +845,20 @@ async def resource_tasks() -> dict[str, Any]:
 @mcp.resource("dexscreener://cli-guide", name="cli-guide", description="CLI-first onboarding and troubleshooting guide.")
 async def resource_cli_guide() -> dict[str, Any]:
     return {
-        "recommendedLiveCommand": (
+        "recommendedLiveCommandWindows": (
             r".\.venv\Scripts\ds.exe new-runners-watch --chain=solana --watch-chains=solana,base "
             r"--profile=discovery --max-age-hours=48 --include-unknown-age --interval=2"
         ),
-        "recommendedHotCommand": r".\.venv\Scripts\ds.exe hot --chains=solana,base --limit=10",
-        "recommendedQuickstartCommand": r".\.venv\Scripts\ds.exe quickstart --shell cmd --goal live",
+        "recommendedLiveCommandMacLinux": (
+            r"./.venv/bin/ds new-runners-watch --chain=solana --watch-chains=solana,base "
+            r"--profile=discovery --max-age-hours=48 --include-unknown-age --interval=2"
+        ),
+        "recommendedHotCommandWindows": r".\.venv\Scripts\ds.exe hot --chains=solana,base --limit=10",
+        "recommendedHotCommandMacLinux": r"./.venv/bin/ds hot --chains=solana,base --limit=10",
+        "recommendedQuickstartCommandWindows": r".\.venv\Scripts\ds.exe quickstart --shell cmd --goal live",
+        "recommendedQuickstartCommandMacLinux": r"./.venv/bin/ds quickstart --shell bash --goal live",
         "windowsFirstTerminal": "Command Prompt",
+        "macLinuxFirstTerminal": "Terminal",
         "liveModeNotes": [
             "Live boards are CLI-only and use timed polling, not websocket streaming.",
             "The default Dex cache TTL is 10 seconds and can be overridden with DS_CACHE_TTL_SECONDS.",

@@ -8,6 +8,13 @@ A visual terminal scanner, MCP server, and AI skill for Dexscreener token signal
 
 Scans hot tokens across every chain Dexscreener supports. Scores them by volume, liquidity, momentum, and flow pressure. Use it from the terminal, connect it to AI agents via MCP, or load it as a skill in Claude/Codex/OpenClaw.
 
+**Best experience:** run this inside your CLI first. The live dashboards and fastest workflows are CLI-native. MCP and `SKILL.md` are there to make the CLI easier to use through natural language in Claude, Codex, OpenClaw, and other agents, especially when you do not want to memorize flags or troubleshoot terminal details yourself.
+
+Think of it this way:
+- **CLI** = primary product and best live experience
+- **MCP** = lets an AI agent call the scanner and guide you in natural language
+- **Skill** = teaches the agent how to use the MCP and when to send you back to the CLI
+
 **Free APIs used:**
 - [Dexscreener API](https://docs.dexscreener.com/) - token data, pairs, profiles, boosts
 - [GeckoTerminal API](https://www.geckoterminal.com/) - trending pools, new tokens
@@ -22,6 +29,7 @@ Scans hot tokens across every chain Dexscreener supports. Scores them by volume,
 You need **Python 3.11+** and **Git** installed. Then follow these 3 steps.
 
 If you are on Windows and do not usually use terminals, use **Command Prompt** first. It is the simplest path for this project.
+If you are on macOS or Linux, use your normal **Terminal** app.
 
 ### Windows: how to open Command Prompt
 
@@ -36,6 +44,13 @@ C:\Users\YOUR_NAME>
 ```
 
 All Windows examples below work in that window.
+
+### macOS / Linux: how to open Terminal
+
+- **macOS:** press `Cmd + Space`, type `Terminal`, press `Enter`
+- **Linux:** open your desktop's `Terminal` app
+
+All Mac/Linux examples below work in that window.
 
 ### Step 1: Clone the repo
 
@@ -71,13 +86,16 @@ cd /d C:\path\to\dexscreener-cli-mcp-tool
 .\.venv\Scripts\ds.exe hot --chains=solana,base --limit=10
 ```
 
-If you are on Mac / Linux or you activated the environment already, the same flow is:
+If you are on Mac / Linux, use the repo-local binary path first:
 
 ```bash
-ds doctor
-ds setup
-ds hot --chains=solana,base --limit=10
+cd /path/to/dexscreener-cli-mcp-tool
+./.venv/bin/ds doctor
+./.venv/bin/ds setup
+./.venv/bin/ds hot --chains=solana,base --limit=10
 ```
+
+If you already activated the environment with `source .venv/bin/activate`, you can use the shorter `ds ...` form instead.
 
 `ds setup` is important on a fresh install. It creates your local default preset so scans feel sensible immediately.
 
@@ -146,6 +164,32 @@ If you want a shorter non-live test first:
 ```cmd
 cd /d C:\path\to\dexscreener-cli-mcp-tool
 .\.venv\Scripts\ds.exe hot --chains=solana,base --limit=10
+```
+
+## Mac / Linux Quick Start
+
+If you want a copy-paste path that works in `Terminal`, use this:
+
+```bash
+cd /path/to/dexscreener-cli-mcp-tool
+./.venv/bin/ds doctor
+./.venv/bin/ds new-runners-watch --chain=solana --watch-chains=solana,base --profile=discovery --max-age-hours=48 --include-unknown-age --interval=2
+```
+
+Or ask the CLI to print the exact commands for you:
+
+```bash
+cd /path/to/dexscreener-cli-mcp-tool
+./.venv/bin/ds quickstart --shell bash --goal live
+```
+
+If you already activated the virtual environment, the same commands work as `ds ...`.
+
+If you want a shorter non-live test first:
+
+```bash
+cd /path/to/dexscreener-cli-mcp-tool
+./.venv/bin/ds hot --chains=solana,base --limit=10
 ```
 
 ---
@@ -406,12 +450,14 @@ ds hot --chains solana --limit 5 --json > tokens.json
 
 ### "I want an AI agent to use this"
 
+The best live experience is still the CLI. MCP and the skill file are the guidance layer: they help Claude, Codex, OpenClaw, and other agents tell you what to run, call scan/search/task tools in natural language, and reduce the terminal friction.
+
 Start the MCP server and connect it to Claude, Codex, or any MCP-compatible agent:
 ```bash
-dexscreener-mcp
+./.venv/bin/dexscreener-mcp
 ```
 
-On Windows, if you have **not** activated the virtual environment, run the full path instead:
+On Windows, if you have **not** activated the virtual environment, run the repo-local path instead:
 
 ```cmd
 cd /d C:\path\to\dexscreener-cli-mcp-tool
@@ -441,22 +487,22 @@ The agent calls the right MCP tool with the right parameters. You get the same d
 
 **Step 2:** Add the MCP server to your AI agent's config.
 
-**Claude Desktop** - add to your `claude_desktop_config.json`:
+**Claude Desktop** - add to your `claude_desktop_config.json`.
+
+Mac/Linux example:
 
 ```json
 {
   "mcpServers": {
     "dexscreener": {
-      "command": "path/to/dexscreener-cli-mcp-tool/.venv/Scripts/dexscreener-mcp",
+      "command": "/path/to/dexscreener-cli-mcp-tool/.venv/bin/dexscreener-mcp",
       "args": []
     }
   }
 }
 ```
 
-On Mac/Linux use `.venv/bin/dexscreener-mcp` instead of `.venv/Scripts/dexscreener-mcp`.
-
-If you want an exact Windows example, replace the command path with your real local path:
+Windows example:
 
 ```json
 {
@@ -470,11 +516,25 @@ If you want an exact Windows example, replace the command path with your real lo
 
 **Claude Code** - add to your `.mcp.json` or project settings:
 
+Mac/Linux example:
+
 ```json
 {
   "mcpServers": {
     "dexscreener": {
-      "command": "path/to/dexscreener-cli-mcp-tool/.venv/Scripts/dexscreener-mcp"
+      "command": "/path/to/dexscreener-cli-mcp-tool/.venv/bin/dexscreener-mcp"
+    }
+  }
+}
+```
+
+Windows example:
+
+```json
+{
+  "mcpServers": {
+    "dexscreener": {
+      "command": "C:\\path\\to\\dexscreener-cli-mcp-tool\\.venv\\Scripts\\dexscreener-mcp.exe"
     }
   }
 }
@@ -605,7 +665,7 @@ Dexscreener enforces:
 - **60 rpm** for token profiles, boosts, orders
 - **300 rpm** for search, pairs, token-pairs
 
-The scanner handles this automatically with separate rate-limit buckets, 20-second caching, and retry/backoff. Holder data is cached for 15 minutes. You don't need to worry about hitting limits.
+The scanner handles this automatically with separate rate-limit buckets, 10-second caching, and retry/backoff. Holder data is cached for 15 minutes. You don't need to worry about hitting limits.
 
 ---
 

@@ -1012,26 +1012,12 @@ def _quickstart_shell(shell: str) -> str:
     return "bash"
 
 
-def _cli_binary(shell: str) -> str:
-    root = _repo_root()
-    if shell in {"cmd", "powershell"}:
-        return str(root / ".venv" / "Scripts" / "ds.exe")
-    return str(root / ".venv" / "bin" / "ds")
-
-
-def _mcp_binary(shell: str) -> str:
-    root = _repo_root()
-    if shell in {"cmd", "powershell"}:
-        return str(root / ".venv" / "Scripts" / "dexscreener-mcp.exe")
-    return str(root / ".venv" / "bin" / "dexscreener-mcp")
-
-
 def _command_prefix(shell: str) -> str:
     if shell == "cmd":
         return r".\.venv\Scripts\ds.exe"
     if shell == "powershell":
         return r".\.venv\Scripts\ds.exe"
-    return "ds"
+    return "./.venv/bin/ds"
 
 
 def _shell_cd_command(shell: str) -> str:
@@ -1043,6 +1029,7 @@ def _shell_cd_command(shell: str) -> str:
 
 def _quickstart_commands(shell: str, goal: str) -> list[str]:
     prefix = _command_prefix(shell)
+    mcp_prefix = r".\.venv\Scripts\dexscreener-mcp.exe" if shell in {"cmd", "powershell"} else "./.venv/bin/dexscreener-mcp"
     live = (
         f"{prefix} new-runners-watch --chain=solana --watch-chains=solana,base "
         "--profile=discovery --max-age-hours=48 --include-unknown-age --interval=2"
@@ -1051,7 +1038,7 @@ def _quickstart_commands(shell: str, goal: str) -> list[str]:
     if goal == "hot":
         return [_shell_cd_command(shell), f"{prefix} doctor", hot]
     if goal == "mcp":
-        return [_shell_cd_command(shell), f"{prefix} doctor", _mcp_binary(shell)]
+        return [_shell_cd_command(shell), f"{prefix} doctor", mcp_prefix]
     if goal == "all":
         return [_shell_cd_command(shell), f"{prefix} doctor", f"{prefix} setup", hot, live]
     return [_shell_cd_command(shell), f"{prefix} doctor", live]
