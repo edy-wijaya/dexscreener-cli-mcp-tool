@@ -251,6 +251,9 @@ The 3 built-in profiles (strict / balanced / discovery) are always available. Yo
 | `ds doctor` | Diagnose issues and verify your setup |
 | `ds update` | Pull latest code and reinstall |
 | `ds profiles` | Show built-in filter thresholds per chain |
+| `ds rate-stats` | Show runtime API usage, limits, and cache timing |
+| `ds why` | Explain why the project uses Dexscreener and what it optimizes for |
+| `ds god-prompt` | Print the repo's long-form extension prompt for AI-assisted development |
 
 ### Tasks & Alerts
 
@@ -260,10 +263,23 @@ Set up automated scans that run on a schedule and alert you via Discord, Telegra
 |---------|-------------|
 | `ds task create <name>` | Create a scheduled scan task |
 | `ds task list` | List all tasks |
+| `ds task show <name>` | Show one task as JSON |
+| `ds task status <name> <status>` | Change task status (`todo`, `running`, `done`, `blocked`) |
+| `ds task delete <name>` | Delete a task |
+| `ds task configure <name>` | Add alerts or edit schedule/filter overrides |
 | `ds task run <name>` | Run a task once |
 | `ds task daemon` | Run scheduler for all due tasks |
-| `ds task configure <name>` | Add alerts (Discord, Telegram, webhook) |
 | `ds task test-alert <name>` | Send a test alert |
+| `ds task runs` | List task execution history |
+
+### Import / Export State
+
+Use these when you want to move your presets, tasks, and task history between machines or keep a backup.
+
+| Command | What it does |
+|---------|-------------|
+| `ds state export --path backup.json` | Export presets, tasks, and runs to one JSON file |
+| `ds state import --path backup.json` | Import presets, tasks, and runs from a JSON file |
 
 ### Output
 
@@ -512,7 +528,7 @@ For reference, these are the tools the agent has access to:
 | `get_rate_budget_stats` | Check API rate limits and usage |
 | `get_cli_quickstart` | Return exact copy-paste CLI commands for Windows/macOS/Linux and live/MCP goals |
 
-Plus 3 resources (`dexscreener://profiles`, `dexscreener://presets`, `dexscreener://tasks`) and 3 prompts (`alpha_scan_plan`, `runner_triage`, `cli_quickstart_guide`).
+Plus 4 resources (`dexscreener://profiles`, `dexscreener://presets`, `dexscreener://tasks`, `dexscreener://cli-guide`) and 3 prompts (`alpha_scan_plan`, `runner_triage`, `cli_quickstart_guide`).
 
 ---
 

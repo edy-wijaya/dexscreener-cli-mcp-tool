@@ -143,15 +143,25 @@ ds quickstart   # Print exact copy-paste commands for live/hot/MCP setup
 ds doctor       # Diagnose issues (checks Python, packages, API, env vars, git)
 ds update       # Pull latest code and reinstall
 ds profiles     # Show built-in profile thresholds per chain
+ds rate-stats   # Show API usage, retry counts, and cache timing
+ds why          # Explain why Dexscreener is used and what the CLI optimizes for
+ds god-prompt   # Print the repo's long-form extension prompt
 ```
 
-### Alerts Setup
+### Tasks & Alerts
 ```bash
 # Discord
 ds task create scout --preset my-degen --interval-seconds 60
 ds task configure scout --discord-webhook-url https://discord.com/api/webhooks/...
 ds task test-alert scout
 ds task daemon --all
+
+# Inspect / maintain tasks
+ds task list
+ds task show scout
+ds task status scout running
+ds task runs --task scout --limit 20
+ds task delete scout
 
 # Telegram
 ds task configure scout --telegram-bot-token YOUR_TOKEN --telegram-chat-id YOUR_CHAT_ID
@@ -161,6 +171,12 @@ ds task configure scout --webhook-url https://your-server.com/hook
 
 # Alert tuning
 ds task configure scout --alert-min-score 75 --alert-cooldown-seconds 120 --alert-top-n 3
+```
+
+### Import / Export State
+```bash
+ds state export --path backup.json      # Export presets/tasks/runs to JSON
+ds state import --path backup.json      # Import presets/tasks/runs from JSON
 ```
 
 ## Natural Language Mapping
