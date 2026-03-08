@@ -16,6 +16,18 @@ from .task_runner import execute_task_once, select_due_tasks
 
 mcp = FastMCP("dexscreener-cli-mcp-tool")
 SCAN_PROFILE_NAMES: tuple[str, ...] = ("strict", "balanced", "discovery")
+KNOWN_CHAINS: frozenset[str] = frozenset(
+    {
+        "solana",
+        "base",
+        "ethereum",
+        "bsc",
+        "arbitrum",
+        "polygon",
+        "optimism",
+        "avalanche",
+    }
+)
 SCAN_PROFILE_BASELINES: dict[str, dict[str, float]] = {
     "strict": {"min_liquidity_usd": 35_000.0, "min_volume_h24_usd": 90_000.0, "min_txns_h1": 50.0},
     "balanced": {"min_liquidity_usd": 20_000.0, "min_volume_h24_usd": 40_000.0, "min_txns_h1": 25.0},
@@ -207,6 +219,11 @@ def _parse_chains(raw: str | None) -> tuple[str, ...]:
         return DEFAULT_CHAINS
     raw = _clamp_str(raw, _MAX_CHAINS_LEN, "chains")
     values = tuple(c.strip().lower() for c in raw.split(",") if c.strip())
+    invalid = [chain for chain in values if chain not in KNOWN_CHAINS]
+    if invalid:
+        raise ValueError(
+            "Unknown chain(s): " + ", ".join(invalid) + ". Allowed: " + ", ".join(sorted(KNOWN_CHAINS))
+        )
     return values or DEFAULT_CHAINS
 
 
@@ -310,11 +327,11 @@ async def scan_hot_tokens(
     min_liquidity_usd = _bounded_float(min_liquidity_usd, minimum=0.0, label="min_liquidity_usd")
     min_volume_h24_usd = _bounded_float(min_volume_h24_usd, minimum=0.0, label="min_volume_h24_usd")
     min_txns_h1 = _bounded_int(min_txns_h1, minimum=0, maximum=1_000_000, label="min_txns_h1")
-    chain_ids = tuple(c.strip().lower() for c in chains.split(",") if c.strip())
+    chain_ids = _parse_chains(chains)
     async with DexScreenerClient() as client:
         scanner = HotScanner(client)
         filters = ScanFilters(
-            chains=chain_ids or DEFAULT_CHAINS,
+            chains=chain_ids,
             limit=limit,
             min_liquidity_usd=min_liquidity_usd,
             min_volume_h24_usd=min_volume_h24_usd,
@@ -701,6 +718,24 @@ async def import_state_bundle(bundle: dict[str, Any], mode: str = "merge") -> di
         return {"error": f"Bundle exceeds max {_MAX_IMPORT_TASKS} tasks"}
     if len(runs) > _MAX_IMPORT_RUNS:
         return {"error": f"Bundle exceeds max {_MAX_IMPORT_RUNS} runs"}
+    for task in tasks:
+        if not isinstance(task, dict):
+            return {"error": "Bundle tasks must contain only objects"}
+        alerts = task.get("alerts")
+        if not isinstance(alerts, dict):
+            continue
+        webhook_url = alerts.get("webhook_url")
+        if isinstance(webhook_url, str) and webhook_url.strip():
+            try:
+                validate_webhook_url(webhook_url)
+            except ValueError as exc:
+                return {"error": f"Invalid imported webhook_url: {exc}"}
+        discord_webhook_url = alerts.get("discord_webhook_url")
+        if isinstance(discord_webhook_url, str) and discord_webhook_url.strip():
+            try:
+                validate_webhook_url(discord_webhook_url)
+            except ValueError as exc:
+                return {"error": f"Invalid imported discord_webhook_url: {exc}"}
     store = StateStore()
     counts = store.import_bundle(bundle, mode=mode)  # type: ignore[arg-type]
     return {"ok": True, "mode": mode, "counts": counts}
@@ -714,6 +749,7 @@ async def search_pairs(query: str, limit: int = 20) -> list[dict[str, Any]]:
     "look up this address", etc. Returns matching pairs with price,
     volume, liquidity, and pair URL.
     """
+    query = _clamp_str(query, 500, "query")
     limit = _bounded_int(limit, minimum=1, maximum=_MAX_LIMIT, label="limit")
     async with DexScreenerClient() as client:
         scanner = HotScanner(client)

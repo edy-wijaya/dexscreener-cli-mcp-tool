@@ -1,11 +1,23 @@
 """Tests for security hardening: webhook validation, URL encoding, path validation, template safety, error sanitization."""
 from __future__ import annotations
 
+import asyncio
+import os
+import stat
+
 import pytest
 
-from dexscreener_cli.alerts import _build_delivery_target, _SafeTemplate, _sanitize_channel_error, validate_webhook_url
+from dexscreener_cli import mcp_server
+from dexscreener_cli.alerts import (
+    _build_delivery_target,
+    _SafeTemplate,
+    _sanitize_channel_error,
+    validate_webhook_url,
+)
 from dexscreener_cli.cli import _build_alert_config as build_cli_alert_config
 from dexscreener_cli.client import _validate_path_segment
+from dexscreener_cli.config import ScanFilters
+from dexscreener_cli.state import ScanPreset, StateStore
 from dexscreener_cli.task_runner import _sanitize_error
 from dexscreener_cli.watch_controls import _sanitize_clipboard
 
@@ -118,6 +130,12 @@ class TestSanitizeError:
         msg = "Connection timeout after 10 seconds"
         assert _sanitize_error(msg) == msg
 
+    def test_strips_url(self) -> None:
+        msg = "Webhook failed at https://example.com/secret?token=abc"
+        cleaned = _sanitize_error(msg)
+        assert "https://example.com" not in cleaned
+        assert "<url>" in cleaned
+
 
 class TestChannelErrorSanitization:
     def test_strips_urls_and_tokens(self) -> None:
@@ -148,6 +166,73 @@ class TestCliAlertValidation:
                 alert_min_score=None,
                 alert_cooldown_seconds=None,
             )
+
+
+class TestMcpValidation:
+    def test_scan_hot_tokens_rejects_unknown_chain(self) -> None:
+        with pytest.raises(ValueError, match="Unknown chain"):
+            asyncio.run(mcp_server.scan_hot_tokens(chains="solana,notachain"))
+
+    def test_search_pairs_clamps_query_length(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, str] = {}
+
+        class DummyClient:
+            async def __aenter__(self) -> DummyClient:
+                return self
+
+            async def __aexit__(self, *_args: object) -> None:
+                return None
+
+        class DummyScanner:
+            def __init__(self, _client: object) -> None:
+                return None
+
+            async def search(self, query: str, limit: int) -> list[object]:
+                captured["query"] = query
+                captured["limit"] = str(limit)
+                return []
+
+        monkeypatch.setattr(mcp_server, "DexScreenerClient", DummyClient)
+        monkeypatch.setattr(mcp_server, "HotScanner", DummyScanner)
+
+        asyncio.run(mcp_server.search_pairs("x" * 800, limit=5))
+        assert len(captured["query"]) == 500
+        assert captured["limit"] == "5"
+
+    def test_import_bundle_rejects_unsafe_webhook(self, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(mcp_server, "StateStore", lambda: StateStore(base_dir=tmp_path))
+        result = asyncio.run(
+            mcp_server.import_state_bundle(
+                {
+                    "presets": [],
+                    "tasks": [
+                        {
+                            "id": "t1",
+                            "name": "bad",
+                            "alerts": {"webhook_url": "http://example.com/hook"},
+                        }
+                    ],
+                    "runs": [],
+                }
+            )
+        )
+        assert "Invalid imported webhook_url" in result["error"]
+
+
+class TestStatePermissions:
+    @pytest.mark.skipif(os.name == "nt", reason="Unix permission model only")
+    def test_state_dir_and_files_are_private_on_unix(self, tmp_path) -> None:
+        store = StateStore(base_dir=tmp_path)
+        preset = ScanPreset.from_filters(
+            name="demo",
+            filters=ScanFilters(chains=("solana",), limit=5, min_liquidity_usd=1, min_volume_h24_usd=1, min_txns_h1=1),
+        )
+        store.save_preset(preset)
+
+        dir_mode = stat.S_IMODE(store.base_dir.stat().st_mode)
+        file_mode = stat.S_IMODE(store.presets_file.stat().st_mode)
+        assert dir_mode == 0o700
+        assert file_mode == 0o600
 
 
 class TestSanitizeClipboard:

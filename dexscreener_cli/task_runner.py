@@ -19,6 +19,7 @@ def _sanitize_error(msg: str) -> str:
     # Remove Windows and Unix file paths.
     cleaned = re.sub(r"[A-Za-z]:\\[\w\\\-. ]+", "<path>", msg)
     cleaned = re.sub(r"/(?:home|tmp|var|usr|etc|Users)/[\w/\\\-. ]+", "<path>", cleaned)
+    cleaned = re.sub(r"https?://\S+", "<url>", cleaned)
     return cleaned[:_MAX_ERROR_LEN]
 
 

@@ -1306,7 +1306,7 @@ def doctor() -> None:
     # 3. API connectivity
     import httpx as _httpx
     try:
-        resp = _httpx.get("https://api.dexscreener.com/token-boosts/top/v1", timeout=10)
+        resp = _httpx.get("https://api.dexscreener.com/token-boosts/top/v1", timeout=10, follow_redirects=False)
         checks.append(("Dexscreener API", resp.status_code == 200, f"HTTP {resp.status_code}"))
     except Exception as exc:
         checks.append(("Dexscreener API", False, str(exc)[:60]))

@@ -236,9 +236,30 @@ class StateStore:
         self._state_lock = threading.RLock()
         self._lock_depth = 0
         self._lock_handle: Any | None = None
+        self._harden_permissions()
+
+    def _harden_permissions(self) -> None:
+        if os.name == "nt":
+            return
+        try:
+            self.base_dir.chmod(0o700)
+        except OSError:
+            pass
+        for path in (self.lock_file, self.presets_file, self.tasks_file, self.runs_file):
+            if not path.exists():
+                continue
+            try:
+                path.chmod(0o600)
+            except OSError:
+                pass
 
     def _acquire_file_lock(self) -> None:
         handle = self.lock_file.open("a+", encoding="utf-8")
+        if os.name != "nt":
+            try:
+                self.lock_file.chmod(0o600)
+            except OSError:
+                pass
         handle.seek(0)
         handle.write("0")
         handle.flush()
@@ -293,7 +314,17 @@ class StateStore:
     def _save_json(self, path: Path, payload: dict[str, Any]) -> None:
         tmp = path.with_suffix(path.suffix + ".tmp")
         tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        if os.name != "nt":
+            try:
+                tmp.chmod(0o600)
+            except OSError:
+                pass
         tmp.replace(path)
+        if os.name != "nt":
+            try:
+                path.chmod(0o600)
+            except OSError:
+                pass
 
     # Presets
     def list_presets(self) -> list[ScanPreset]:
