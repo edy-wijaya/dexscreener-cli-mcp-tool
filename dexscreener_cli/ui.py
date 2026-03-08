@@ -271,9 +271,9 @@ def count_candidate_transitions(
 
 def _row_live_style(current: HotTokenCandidate, previous: HotTokenCandidate | None) -> str | None:
     if previous is None:
-        return "on #252525"
+        return None
     if _visible_candidate_changed(current, previous):
-        return "on #202020"
+        return f"on {C_ROW_ALT}"
     return None
 
 
