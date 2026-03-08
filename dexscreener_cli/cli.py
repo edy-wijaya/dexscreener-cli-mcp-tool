@@ -150,6 +150,12 @@ NEW_COIN_PROFILE_BASELINES: dict[str, dict[str, float]] = {
     "balanced": {"min_liquidity_usd": 10_000.0, "min_volume_h24_usd": 1_500.0, "min_txns_h24": 20.0},
     "discovery": {"min_liquidity_usd": 3_000.0, "min_volume_h24_usd": 200.0, "min_txns_h24": 3.0},
 }
+LIVE_DEFAULT_INTERVAL_SECONDS = 2.0
+LIVE_DEFAULT_RUNNER_CHAIN = "solana"
+LIVE_DEFAULT_WATCH_CHAINS = "solana,base"
+LIVE_DEFAULT_RUNNER_MAX_AGE_HOURS = 48.0
+LIVE_DEFAULT_ALPHA_MAX_AGE_HOURS = 12.0
+LIVE_DEFAULT_PROFILE = "discovery"
 CHAIN_PROFILE_MULTIPLIER: dict[str, float] = {
     "solana": 1.0,
     "base": 0.9,
@@ -1470,8 +1476,8 @@ def top_new(
 def alpha_drops(
     chains: Annotated[str, typer.Option(help="Comma-separated chain IDs")] = "base,solana",
     limit: Annotated[int, typer.Option(help="Max rows")] = 15,
-    max_age_hours: Annotated[float, typer.Option(help="Only include pairs newer than this age")] = 6.0,
-    profile: Annotated[str, typer.Option(help="Filter profile: strict/balanced/discovery")] = "balanced",
+    max_age_hours: Annotated[float, typer.Option(help="Only include pairs newer than this age")] = LIVE_DEFAULT_ALPHA_MAX_AGE_HOURS,
+    profile: Annotated[str, typer.Option(help="Filter profile: strict/balanced/discovery")] = LIVE_DEFAULT_PROFILE,
     min_liquidity_usd: Annotated[float | None, typer.Option(help="Minimum pair liquidity in USD")] = None,
     min_volume_h24_usd: Annotated[float | None, typer.Option(help="Minimum 24h volume in USD")] = None,
     min_txns_h1: Annotated[int | None, typer.Option(help="Minimum 1h transactions")] = None,
@@ -1534,9 +1540,9 @@ def alpha_drops(
 def alpha_drops_watch(
     chains: Annotated[str, typer.Option(help="Comma-separated chain IDs")] = "base,solana",
     limit: Annotated[int, typer.Option(help="Max rows")] = 15,
-    max_age_hours: Annotated[float, typer.Option(help="Only include pairs newer than this age")] = 6.0,
-    interval: Annotated[float, typer.Option(help="Refresh interval seconds")] = 6.0,
-    profile: Annotated[str, typer.Option(help="Filter profile: strict/balanced/discovery")] = "balanced",
+    max_age_hours: Annotated[float, typer.Option(help="Only include pairs newer than this age")] = LIVE_DEFAULT_ALPHA_MAX_AGE_HOURS,
+    interval: Annotated[float, typer.Option(help="Refresh interval seconds")] = LIVE_DEFAULT_INTERVAL_SECONDS,
+    profile: Annotated[str, typer.Option(help="Filter profile: strict/balanced/discovery")] = LIVE_DEFAULT_PROFILE,
     min_liquidity_usd: Annotated[float | None, typer.Option(help="Minimum pair liquidity in USD")] = None,
     min_volume_h24_usd: Annotated[float | None, typer.Option(help="Minimum 24h volume in USD")] = None,
     min_txns_h1: Annotated[int | None, typer.Option(help="Minimum 1h transactions")] = None,
@@ -1694,10 +1700,10 @@ def alpha_drops_watch(
 
 @app.command("new-runners")
 def new_runners(
-    chain: Annotated[str, typer.Option(help="Chain ID, defaults to base")] = "base",
+    chain: Annotated[str, typer.Option(help="Chain ID, defaults to solana")] = LIVE_DEFAULT_RUNNER_CHAIN,
     limit: Annotated[int, typer.Option(help="Number of fresh runners to show")] = 10,
-    max_age_hours: Annotated[float, typer.Option(help="Maximum token age in hours")] = 24.0,
-    profile: Annotated[str, typer.Option(help="Filter profile: strict/balanced/discovery")] = "balanced",
+    max_age_hours: Annotated[float, typer.Option(help="Maximum token age in hours")] = LIVE_DEFAULT_RUNNER_MAX_AGE_HOURS,
+    profile: Annotated[str, typer.Option(help="Filter profile: strict/balanced/discovery")] = LIVE_DEFAULT_PROFILE,
     min_liquidity_usd: Annotated[float | None, typer.Option(help="Minimum pair liquidity in USD")] = None,
     min_volume_h24_usd: Annotated[float | None, typer.Option(help="Minimum 24h volume in USD")] = None,
     min_txns_h1: Annotated[int | None, typer.Option(help="Minimum 1h transactions")] = None,
@@ -1709,7 +1715,7 @@ def new_runners(
     min_half_life_minutes: Annotated[float, typer.Option(help="Minimum momentum half-life in minutes (if known)")] = 6.0,
     min_decay_ratio: Annotated[float, typer.Option(help="Minimum momentum decay ratio (if known)")] = 0.35,
     max_vol_liq_ratio: Annotated[float, typer.Option(help="Maximum 24h volume/liquidity ratio (anti-thin filter)")] = 60.0,
-    include_unknown_age: Annotated[bool, typer.Option(help="Include tokens with unknown pair age")] = False,
+    include_unknown_age: Annotated[bool, typer.Option(help="Include tokens with unknown pair age")] = True,
     as_json: Annotated[bool, typer.Option("--json", help="Output machine-readable JSON")] = False,
 ) -> None:
     """Show best new runners for a chain (optimized for day-trading discovery)."""
@@ -1773,12 +1779,12 @@ def new_runners(
 
 @app.command("new-runners-watch")
 def new_runners_watch(
-    chain: Annotated[str, typer.Option(help="Chain ID, defaults to base")] = "base",
-    watch_chains: Annotated[str | None, typer.Option(help="Comma-separated watch chain list for keyboard switching")] = None,
+    chain: Annotated[str, typer.Option(help="Chain ID, defaults to solana")] = LIVE_DEFAULT_RUNNER_CHAIN,
+    watch_chains: Annotated[str | None, typer.Option(help="Comma-separated watch chain list for keyboard switching")] = LIVE_DEFAULT_WATCH_CHAINS,
     limit: Annotated[int, typer.Option(help="Number of fresh runners to show")] = 10,
-    max_age_hours: Annotated[float, typer.Option(help="Maximum token age in hours")] = 24.0,
-    interval: Annotated[float, typer.Option(help="Refresh interval seconds")] = 7.0,
-    profile: Annotated[str, typer.Option(help="Filter profile: strict/balanced/discovery")] = "balanced",
+    max_age_hours: Annotated[float, typer.Option(help="Maximum token age in hours")] = LIVE_DEFAULT_RUNNER_MAX_AGE_HOURS,
+    interval: Annotated[float, typer.Option(help="Refresh interval seconds")] = LIVE_DEFAULT_INTERVAL_SECONDS,
+    profile: Annotated[str, typer.Option(help="Filter profile: strict/balanced/discovery")] = LIVE_DEFAULT_PROFILE,
     min_liquidity_usd: Annotated[float | None, typer.Option(help="Minimum pair liquidity in USD")] = None,
     min_volume_h24_usd: Annotated[float | None, typer.Option(help="Minimum 24h volume in USD")] = None,
     min_txns_h1: Annotated[int | None, typer.Option(help="Minimum 1h transactions")] = None,
@@ -1790,7 +1796,7 @@ def new_runners_watch(
     min_half_life_minutes: Annotated[float, typer.Option(help="Minimum momentum half-life in minutes (if known)")] = 6.0,
     min_decay_ratio: Annotated[float, typer.Option(help="Minimum momentum decay ratio (if known)")] = 0.35,
     max_vol_liq_ratio: Annotated[float, typer.Option(help="Maximum 24h volume/liquidity ratio (anti-thin filter)")] = 60.0,
-    include_unknown_age: Annotated[bool, typer.Option(help="Include tokens with unknown pair age")] = False,
+    include_unknown_age: Annotated[bool, typer.Option(help="Include tokens with unknown pair age")] = True,
     cycles: Annotated[int, typer.Option(help="Stop after N refreshes (0 = infinite)")] = 0,
     screen: Annotated[bool, typer.Option(help="Use fullscreen alternate buffer")] = True,
 ) -> None:
@@ -1941,7 +1947,7 @@ def new_runners_watch(
 def watch(
     chains: Annotated[str | None, typer.Option(help="Comma-separated chain IDs")] = None,
     limit: Annotated[int | None, typer.Option(help="Number of rows")] = None,
-    interval: Annotated[float, typer.Option(help="Refresh interval seconds")] = 7.0,
+    interval: Annotated[float, typer.Option(help="Refresh interval seconds")] = LIVE_DEFAULT_INTERVAL_SECONDS,
     min_liquidity_usd: Annotated[float | None, typer.Option(help="Minimum pair liquidity in USD")] = None,
     min_volume_h24_usd: Annotated[float | None, typer.Option(help="Minimum 24h volume in USD")] = None,
     min_txns_h1: Annotated[int | None, typer.Option(help="Minimum 1h transactions")] = None,
@@ -1958,6 +1964,18 @@ def watch(
         min_price_change_h1=min_price_change_h1,
         preset_name=preset,
     )
+    if (
+        preset is None
+        and chains is None
+        and min_liquidity_usd is None
+        and min_volume_h24_usd is None
+        and min_txns_h1 is None
+        and min_price_change_h1 is None
+    ):
+        live_profile = _resolve_scan_profile(LIVE_DEFAULT_PROFILE, filters.chains)
+        filters.min_liquidity_usd = live_profile["min_liquidity_usd"]
+        filters.min_volume_h24_usd = live_profile["min_volume_h24_usd"]
+        filters.min_txns_h1 = int(live_profile["min_txns_h1"])
 
     async def loop() -> None:
         async with DexScreenerClient() as client:

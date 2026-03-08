@@ -105,7 +105,7 @@ ds hot --json                           # JSON output for scripts
 ### Real-Time Live Dashboards
 ```bash
 ds watch --chains solana --interval 5               # Live hot runner board
-ds new-runners-watch --chain solana --interval 6     # Live new runner tracker
+ds new-runners-watch --chain solana --interval 2     # Live new runner tracker
 ds alpha-drops-watch --chains solana,base             # Live alpha drops with alerts
 ```
 

@@ -237,7 +237,7 @@ Important: this project uses **live polling** of public APIs, not websocket stre
 The simplest live mode. Shows the same hot runner table as `ds hot`, but refreshes automatically.
 
 ```bash
-ds watch                                        # All chains, refreshes every 7s
+ds watch                                        # All chains, refreshes every 2s
 ds watch --chains solana --limit 10 --interval 5  # Solana only, 5s refresh
 ds watch --preset my-degen                       # Use your custom profile
 ```
@@ -248,7 +248,7 @@ Full-screen dashboard with keyboard controls. Shows new tokens with rank movers,
 
 ```bash
 ds new-runners-watch --chain solana              # Watch Solana runners
-ds new-runners-watch --chain base --interval 6   # Watch Base, 6s refresh
+ds new-runners-watch --chain base --interval 2   # Watch Base, 2s refresh
 ds new-runners-watch --chain solana --watch-chains solana,base,ethereum  # Enable chain switching
 ```
 
@@ -277,7 +277,7 @@ ds alpha-drops-watch --chains solana --alert-min-score 75 --alert-cooldown-secon
 ```
 
 **Tips for all live modes:**
-- Use `--interval 5` for faster updates (default is 6-7 seconds)
+- Use `--interval 5` if you want slower, less chatty screen refreshes (default is 2 seconds)
 - Use `--limit` to control how many tokens show (fewer = faster scans)
 - Use `--profile discovery` to cast a wider net and see more tokens
 - Use `--no-screen` (on new-runners-watch and alpha-drops-watch) to avoid fullscreen mode
