@@ -740,12 +740,11 @@ def render_hot_table(
         title=title,
         box=box.SIMPLE_HEAVY,
         header_style=f"bold {C_TEXT}",
-        show_edge=True,
         row_styles=["", "on #1e2029"],
         border_style=C_BORDER,
         title_style="",
     )
-    table.add_column("#", justify="right", style=f"bold {C_TEXT}", width=3)
+    table.add_column(_safe_text(f" {DIAMOND}"), justify="right", width=4)
     table.add_column("Chain", min_width=5)
     table.add_column("Token", style=f"bold {C_GOLD}", min_width=8)
     table.add_column("Score", justify="right", width=5)
@@ -769,7 +768,7 @@ def render_hot_table(
 
         if compact:
             table.add_row(
-                str(i),
+                _rank_badge(i),
                 _chain_text(p.chain_id),
                 Text(_safe_text(p.base_symbol), style=f"bold {C_GOLD}"),
                 score_text,
@@ -784,7 +783,7 @@ def render_hot_table(
             )
         else:
             table.add_row(
-                str(i),
+                _rank_badge(i),
                 _chain_text(p.chain_id),
                 Text(_safe_text(p.base_symbol), style=f"bold {C_GOLD}"),
                 score_text,

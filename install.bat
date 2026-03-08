@@ -30,14 +30,17 @@ echo  ====================================
 echo   Install complete!
 echo  ====================================
 echo.
-echo  Quick start:
+echo  Activate the environment first:
+echo    .venv\Scripts\activate
+echo.
+echo  Then run:
 echo    ds setup          - Calibrate your scanner
 echo    ds hot            - Scan hot tokens
 echo    ds watch          - Live dashboard
 echo    ds search pepe    - Search tokens
 echo    ds --help         - All commands
 echo.
-echo  MCP server:
-echo    dexscreener-mcp   - Start MCP server (stdio)
+echo  Or run without activating:
+echo    .\.venv\Scripts\ds.exe hot --chains=solana --limit=10
 echo.
 pause
