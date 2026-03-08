@@ -513,7 +513,7 @@ async def create_task(
         alerts=alerts,
         notes=notes,
     )
-    return task.to_dict()
+    return StateStore._redact_task(task.to_dict())
 
 
 @mcp.tool()
@@ -526,7 +526,7 @@ async def list_tasks(status: str | None = None) -> list[dict[str, Any]]:
     if status and status not in {"todo", "running", "done", "blocked"}:
         return [{"error": "Invalid status. Use todo/running/done/blocked"}]
     rows = store.list_tasks(status=status) if status else store.list_tasks()
-    return [r.to_dict() for r in rows]
+    return [StateStore._redact_task(r.to_dict()) for r in rows]
 
 
 @mcp.tool()
@@ -558,7 +558,7 @@ async def run_task_scan(task: str, fire_alerts: bool = True) -> dict[str, Any]:
     return {
         "ok": result.get("ok", False),
         "error": result.get("error"),
-        "task": result.get("task", row.to_dict()),
+        "task": result.get("task", StateStore._redact_task(row.to_dict())),
         "filters": result.get("filters"),
         "results": [_serialize_candidate(c) for c in candidates if isinstance(c, HotTokenCandidate)],
         "alert": result.get("alert"),
@@ -610,7 +610,7 @@ async def run_due_tasks(
                 {
                     "ok": result.get("ok", False),
                     "error": result.get("error"),
-                    "task": result.get("task", task.to_dict()),
+                    "task": result.get("task", StateStore._redact_task(task.to_dict())),
                     "resultCount": len(candidates),
                     "top": (
                         _serialize_candidate(candidates[0])
@@ -654,7 +654,7 @@ async def test_task_alert(task: str, with_scan: bool = False) -> dict[str, Any]:
     alert_result = await send_test_alert(row, candidates=candidates)
     if alert_result.get("sent"):
         store.touch_task_alert(row.id)
-    return {"task": row.to_dict(), "alert": alert_result}
+    return {"task": StateStore._redact_task(row.to_dict()), "alert": alert_result}
 
 
 @mcp.tool()
@@ -839,7 +839,7 @@ async def resource_presets() -> dict[str, Any]:
 @mcp.resource("dexscreener://tasks", name="tasks", description="Current saved scan tasks.")
 async def resource_tasks() -> dict[str, Any]:
     store = StateStore()
-    return {"count": len(store.list_tasks()), "items": [t.to_dict() for t in store.list_tasks()]}
+    return {"count": len(store.list_tasks()), "items": [StateStore._redact_task(t.to_dict()) for t in store.list_tasks()]}
 
 
 @mcp.resource("dexscreener://cli-guide", name="cli-guide", description="CLI-first onboarding and troubleshooting guide.")

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import sys
 from collections import deque
 from datetime import UTC, datetime
@@ -1239,8 +1240,11 @@ def update(
 
     # Git pull
     try:
+        git_exe = shutil.which("git")
+        if not git_exe:
+            raise FileNotFoundError("git executable not found")
         result = subprocess.run(
-            ["git", "pull", "--ff-only"],
+            [git_exe, "pull", "--ff-only"],
             cwd=str(repo_root),
             capture_output=True,
             text=True,
@@ -1320,7 +1324,10 @@ def doctor() -> None:
 
     # 6. Git
     try:
-        result = subprocess.run(["git", "--version"], capture_output=True, text=True, timeout=5)
+        git_exe = shutil.which("git")
+        if not git_exe:
+            raise FileNotFoundError("git executable not found")
+        result = subprocess.run([git_exe, "--version"], capture_output=True, text=True, timeout=5)
         checks.append(("Git", result.returncode == 0, result.stdout.strip()))
     except Exception:
         checks.append(("Git", False, "not found (needed for ds update)"))
@@ -2445,7 +2452,7 @@ def task_show(task: Annotated[str, typer.Argument(help="Task id or name")]) -> N
     if not row:
         console.print(f"[red]Task '{task}' not found.[/red]")
         raise typer.Exit(code=1)
-    typer.echo(json.dumps(row.to_dict(), indent=2, ensure_ascii=True))
+    typer.echo(json.dumps(StateStore._redact_task(row.to_dict()), indent=2, ensure_ascii=True))
 
 
 @task_app.command("status")
@@ -2613,7 +2620,7 @@ def task_run(
         typer.echo(
             json.dumps(
                 {
-                    "task": result.get("task", row.to_dict()),
+                    "task": result.get("task", StateStore._redact_task(row.to_dict())),
                     "results": [_candidate_json(c) for c in candidates if isinstance(c, HotTokenCandidate)],
                     "alert": alert_result,
                     "run": result.get("run"),

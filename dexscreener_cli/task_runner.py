@@ -139,7 +139,7 @@ async def execute_task_once(
         )
         return {
             "ok": True,
-            "task": (store.get_task(task.id) or task).to_dict(),
+            "task": StateStore._redact_task((store.get_task(task.id) or task).to_dict()),
             "filters": {
                 "chains": list(filters.chains),
                 "limit": filters.limit,
@@ -171,7 +171,7 @@ async def execute_task_once(
         )
         return {
             "ok": False,
-            "task": (store.get_task(task.id) or task).to_dict(),
+            "task": StateStore._redact_task((store.get_task(task.id) or task).to_dict()),
             "filters": None,
             "candidates": candidates,
             "alert": alert_result,
