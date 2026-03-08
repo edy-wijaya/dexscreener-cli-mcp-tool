@@ -30,17 +30,27 @@ echo  ====================================
 echo   Install complete!
 echo  ====================================
 echo.
-echo  Activate the environment first:
-echo    .venv\Scripts\activate
+
+:: Auto-run doctor so the user sees their status immediately
+echo  Running diagnostics...
 echo.
-echo  Then run:
-echo    ds setup          - Calibrate your scanner
-echo    ds hot            - Scan hot tokens
-echo    ds watch          - Live dashboard
-echo    ds search pepe    - Search tokens
-echo    ds --help         - All commands
+.venv\Scripts\ds.exe doctor
+
 echo.
-echo  Or run without activating:
-echo    .\.venv\Scripts\ds.exe hot --chains=solana --limit=10
+echo  ====================================
+echo   What to do next
+echo  ====================================
+echo.
+echo  You can run commands directly without activating anything:
+echo.
+echo    ds setup              - Pick your chains and preferences (recommended first!)
+echo    ds hot                - Scan hot tokens right now
+echo    ds watch              - Live auto-refreshing dashboard
+echo    ds quickstart         - Print copy-paste commands for your shell
+echo    ds --help             - See all commands
+echo.
+echo  Or for the best live experience, paste this:
+echo.
+echo    ds new-runners-watch --chain=solana --watch-chains=solana,base --profile=discovery --max-age-hours=48 --include-unknown-age --interval=2
 echo.
 pause

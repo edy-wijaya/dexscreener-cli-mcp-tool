@@ -86,6 +86,28 @@ app.add_typer(preset_app, name="preset")
 app.add_typer(task_app, name="task")
 app.add_typer(state_app, name="state")
 console = Console()
+
+
+# ── First-run hint ────────────────────────────────────────────────────
+_FIRST_RUN_SKIP_COMMANDS = frozenset({"setup", "doctor", "quickstart", "update", "--help"})
+
+
+@app.callback(invoke_without_command=True)
+def _app_callback(ctx: typer.Context) -> None:
+    """Show a first-run hint if the user hasn't run ``ds setup`` yet."""
+    if ctx.invoked_subcommand is None:
+        # Bare ``ds`` with no command -> show help
+        typer.echo(ctx.get_help())
+        raise typer.Exit()
+    if ctx.invoked_subcommand in _FIRST_RUN_SKIP_COMMANDS:
+        return
+    state_dir = Path.home() / ".dexscreener-cli"
+    presets_file = state_dir / "presets.json"
+    if not presets_file.exists():
+        console.print(
+            "[bold #fbbf24]Tip:[/bold #fbbf24] First time? Run [bold]ds setup[/bold] "
+            "to pick your chains and preferences (takes 30 seconds).\n"
+        )
 NEW_RUNNER_SORT_MODES: tuple[str, ...] = ("score", "readiness", "rs", "volume", "momentum")
 AI_SEARCH_QUERIES: tuple[str, ...] = ("virtual", "aixbt", "agent", "ai", "gpt", "llm", "bot", "neural", "inference")
 AI_KEYWORDS: tuple[str, ...] = (
@@ -1083,7 +1105,7 @@ def _render_quickstart(shell: str, goal: str) -> None:
 
 @app.command("setup")
 def setup() -> None:
-    """Interactive onboarding wizard to calibrate your scanner."""
+    """Set up your scan preferences - pick chains, style, and filters (5 quick questions)."""
     console.print(build_header())
     console.print()
     console.print(

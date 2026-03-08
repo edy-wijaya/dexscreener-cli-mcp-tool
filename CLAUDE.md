@@ -8,23 +8,25 @@ All APIs used are free and public. The scanner scores tokens 0-100 based on volu
 
 ## Quick Commands
 
-```bash
-ds quickstart --shell bash --goal live
-ds doctor
-ds hot --chains solana,base --limit 10
-ds new-runners-watch --chain=solana --watch-chains=solana,base --profile=discovery --max-age-hours=48 --include-unknown-age --interval=2
-./.venv/bin/dexscreener-mcp
-```
+Wrapper scripts (`ds.bat` / `ds` shell script) live in the repo root so users don't need to type `.venv` paths:
 
-Windows `cmd.exe` equivalents:
+```bash
+# Mac / Linux (from repo root)
+./ds doctor
+./ds hot --chains solana,base --limit 10
+./ds new-runners-watch --chain=solana --watch-chains=solana,base --profile=discovery --max-age-hours=48 --include-unknown-age --interval=2
+./dexscreener-mcp
+```
 
 ```cmd
-.\.venv\Scripts\ds.exe quickstart --shell cmd --goal live
-.\.venv\Scripts\ds.exe doctor
-.\.venv\Scripts\ds.exe hot --chains=solana,base --limit=10
-.\.venv\Scripts\ds.exe new-runners-watch --chain=solana --watch-chains=solana,base --profile=discovery --max-age-hours=48 --include-unknown-age --interval=2
-.\.venv\Scripts\dexscreener-mcp.exe
+:: Windows (from repo root)
+ds doctor
+ds hot --chains=solana,base --limit=10
+ds new-runners-watch --chain=solana --watch-chains=solana,base --profile=discovery --max-age-hours=48 --include-unknown-age --interval=2
+dexscreener-mcp
 ```
+
+Full `.venv` paths also work: `.\.venv\Scripts\ds.exe` (Windows) or `./.venv/bin/ds` (Mac/Linux).
 
 ## Project Structure
 
@@ -69,9 +71,9 @@ dexscreener_cli/
 ## Testing
 
 ```bash
-./.venv/bin/ds doctor
-./.venv/bin/ds hot --chains=solana,base --limit=5
-./.venv/bin/ds quickstart --shell bash --goal live
+./ds doctor
+./ds hot --chains=solana,base --limit=5
+./ds quickstart --shell bash --goal live
 ```
 
 ## Dependencies

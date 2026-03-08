@@ -8,34 +8,55 @@ A visual terminal scanner, MCP server, and AI skill for Dexscreener token signal
 
 Scans hot tokens across every chain Dexscreener supports. Scores them by volume, liquidity, momentum, and flow pressure. Use it from the terminal, connect it to AI agents via MCP, or load it as a skill in Claude/Codex/OpenClaw.
 
-**Best experience:** run this inside your CLI first. The live dashboards and fastest workflows are CLI-native. MCP and `SKILL.md` are there to make the CLI easier to use through natural language in Claude, Codex, OpenClaw, and other agents, especially when you do not want to memorize flags or troubleshoot terminal details yourself.
+---
 
-Think of it this way:
-- **CLI** = primary product and best live experience
-- **MCP** = lets an AI agent call the scanner and guide you in natural language
-- **Skill** = teaches the agent how to use the MCP and when to send you back to the CLI
+## TL;DR - Get scanning in 60 seconds
 
-## Choose Your Path
+**Windows:**
+```
+git clone https://github.com/vibeforge1111/dexscreener-cli-mcp-tool.git
+cd dexscreener-cli-mcp-tool
+install.bat
+ds setup
+ds hot
+```
 
-- Use the **CLI** if you want the best live experience and the realtime dashboards.
-- Use **MCP** if you want Claude, Codex, OpenClaw, or another agent to operate the scanner in natural language.
-- Use **SKILL.md** if you want the agent to be better at mapping plain English to the right CLI and MCP flows.
+**Mac / Linux:**
+```bash
+git clone https://github.com/vibeforge1111/dexscreener-cli-mcp-tool.git
+cd dexscreener-cli-mcp-tool
+chmod +x install.sh && ./install.sh
+./ds setup
+./ds hot
+```
 
-**Free APIs used:**
-- [Dexscreener API](https://docs.dexscreener.com/) - token data, pairs, profiles, boosts
-- [GeckoTerminal API](https://www.geckoterminal.com/) - trending pools, new tokens
-- [Blockscout API](https://docs.blockscout.com/) - holder counts (Base chain)
-- [Honeypot.is API](https://honeypot.is/) - holder counts (Solana, ETH, BSC)
-- [Moralis API](https://moralis.io/) - holder counts (optional, requires free key)
+That's it. After install you can just type `ds` (Windows) or `./ds` (Mac/Linux) from the project folder. No activation, no paths to remember.
 
 ---
 
-## Quick Install
+## What's Installed
 
-You need **Python 3.11+** and **Git** installed. Then follow these 3 steps.
+One install gives you everything:
 
-If you are on Windows and do not usually use terminals, use **Command Prompt** first. It is the simplest path for this project.
-If you are on macOS or Linux, use your normal **Terminal** app.
+| Component | What it is | How to use |
+|-----------|-----------|------------|
+| **CLI** (`ds`) | Terminal scanner and live dashboards - the primary product | `ds hot`, `ds watch`, `ds setup` |
+| **MCP Server** (`dexscreener-mcp`) | Lets AI agents call the scanner in natural language | `dexscreener-mcp` (or configure in Claude/Codex) |
+| **Skill file** (`SKILL.md`) | Teaches AI agents how to use the MCP and CLI | Point your agent at the file |
+
+Think of it this way:
+- **CLI** = best live experience and fastest workflows
+- **MCP** = lets an AI agent operate the scanner for you
+- **Skill** = teaches the agent when to use MCP vs sending you to the CLI
+
+---
+
+## Install
+
+You need **Python 3.11+** and **Git**. That's it.
+
+<details>
+<summary><strong>Never used a terminal before? Click here first.</strong></summary>
 
 ### Windows: how to open Command Prompt
 
@@ -49,14 +70,15 @@ You should see a window with a prompt like:
 C:\Users\YOUR_NAME>
 ```
 
-All Windows examples below work in that window.
+### macOS: how to open Terminal
 
-### macOS / Linux: how to open Terminal
+Press `Cmd + Space`, type `Terminal`, press `Enter`.
 
-- **macOS:** press `Cmd + Space`, type `Terminal`, press `Enter`
-- **Linux:** open your desktop's `Terminal` app
+### Linux: how to open Terminal
 
-All Mac/Linux examples below work in that window.
+Open your desktop's `Terminal` app from the application menu.
+
+</details>
 
 ### Step 1: Clone the repo
 
@@ -69,69 +91,44 @@ cd dexscreener-cli-mcp-tool
 
 ### Step 2: Run the installer
 
-**Windows** - paste this in the same terminal:
+**Windows:**
 ```
 install.bat
 ```
 
-**Mac / Linux** - paste this instead:
+**Mac / Linux:**
 ```bash
 chmod +x install.sh && ./install.sh
 ```
 
-This creates a virtual environment and installs everything. Takes about 30 seconds.
+This creates a virtual environment, installs all dependencies, and runs diagnostics automatically. Takes about 30 seconds.
 
-### Step 3: First run
+### Step 3: Set up your preferences
 
-If you are on Windows Command Prompt, paste these exactly:
-
-```cmd
-cd /d C:\path\to\dexscreener-cli-mcp-tool
-.\.venv\Scripts\ds.exe doctor
-.\.venv\Scripts\ds.exe setup
-.\.venv\Scripts\ds.exe hot --chains=solana,base --limit=10
+```
+ds setup
 ```
 
-If you are on Mac / Linux, use the repo-local binary path first:
+Asks you 5 quick questions (which chains, trading style, etc.) and saves your defaults. Takes 30 seconds.
 
-```bash
-cd /path/to/dexscreener-cli-mcp-tool
-./.venv/bin/ds doctor
-./.venv/bin/ds setup
-./.venv/bin/ds hot --chains=solana,base --limit=10
+### Step 4: Start scanning
+
+```
+ds hot
 ```
 
-If you already activated the environment with `source .venv/bin/activate`, you can use the shorter `ds ...` form instead.
+That's it. You're scanning.
 
-`ds setup` is important on a fresh install. It creates your local default preset so scans feel sensible immediately.
+### Running commands
 
-## After Install, Run This
+After install, short wrapper scripts let you skip the `.venv` path entirely:
 
-If you only run one command after setup, make it this:
+| Platform | Command style | Example |
+|----------|--------------|---------|
+| **Windows** | `ds <command>` | `ds hot --chains=solana` |
+| **Mac / Linux** | `./ds <command>` | `./ds hot --chains=solana` |
 
-```cmd
-.\.venv\Scripts\ds.exe new-runners-watch --chain=solana --watch-chains=solana,base --profile=discovery --max-age-hours=48 --include-unknown-age --interval=2
-```
-
-```bash
-./.venv/bin/ds new-runners-watch --chain=solana --watch-chains=solana,base --profile=discovery --max-age-hours=48 --include-unknown-age --interval=2
-```
-
-### Common Windows mistake
-
-If you see:
-
-```text
-Option '--profile' requires an argument.
-```
-
-you pressed `Enter` too early. Run the whole command on **one line**, for example:
-
-```cmd
-.\.venv\Scripts\ds.exe new-runners-watch --chain=solana --watch-chains=solana,base --profile=discovery --interval=2
-```
-
-Using `=` is the safest way to paste commands in Windows because the option and value stay attached.
+You can always use the full path if you prefer: `.\.venv\Scripts\ds.exe` (Windows) or `./.venv/bin/ds` (Mac/Linux).
 
 <details>
 <summary>Manual install (if the script doesn't work)</summary>
@@ -158,63 +155,93 @@ pip install -e .
 ```
 </details>
 
-That's it. The setup wizard saves your choices and auto-loads them on every scan.
+---
 
-## Windows Quick Start
+## Your First Live Dashboard
 
-If you just want a copy-paste path that works in `cmd.exe`, use this:
+If you only run one more command after setup, make it this:
 
+**Windows:**
 ```cmd
-cd /d C:\path\to\dexscreener-cli-mcp-tool
-.\.venv\Scripts\ds.exe doctor
-.\.venv\Scripts\ds.exe new-runners-watch --chain=solana --watch-chains=solana,base --profile=discovery --max-age-hours=48 --include-unknown-age --interval=2
+ds new-runners-watch --chain=solana --watch-chains=solana,base --profile=discovery --max-age-hours=48 --include-unknown-age --interval=2
 ```
 
-Or ask the CLI to print the exact commands for you:
-
-```cmd
-cd /d C:\path\to\dexscreener-cli-mcp-tool
-.\.venv\Scripts\ds.exe quickstart --shell cmd --goal live
-```
-
-If you want a shorter non-live test first:
-
-```cmd
-cd /d C:\path\to\dexscreener-cli-mcp-tool
-.\.venv\Scripts\ds.exe hot --chains=solana,base --limit=10
-```
-
-## Mac / Linux Quick Start
-
-If you want a copy-paste path that works in `Terminal`, use this:
-
+**Mac / Linux:**
 ```bash
-cd /path/to/dexscreener-cli-mcp-tool
-./.venv/bin/ds doctor
-./.venv/bin/ds new-runners-watch --chain=solana --watch-chains=solana,base --profile=discovery --max-age-hours=48 --include-unknown-age --interval=2
+./ds new-runners-watch --chain=solana --watch-chains=solana,base --profile=discovery --max-age-hours=48 --include-unknown-age --interval=2
 ```
 
-Or ask the CLI to print the exact commands for you:
+This is the best live mode. It auto-refreshes, shows rank movers and spotlight cards, and lets you switch chains with `1`/`2` keys. Press `Ctrl+C` to stop.
 
+### Common Windows mistake
+
+If you see `Option '--profile' requires an argument`, you pressed Enter too early. The whole command needs to be on **one line**. Using `=` signs (like `--profile=discovery`) helps because the option and value stay glued together.
+
+---
+
+## What Can I Do With This?
+
+### "I just want to see what's hot right now"
 ```bash
-cd /path/to/dexscreener-cli-mcp-tool
-./.venv/bin/ds quickstart --shell bash --goal live
+ds hot
 ```
 
-If you already activated the virtual environment, the same commands work as `ds ...`.
-
-If you want a shorter non-live test first:
-
+### "I only care about Solana"
 ```bash
-cd /path/to/dexscreener-cli-mcp-tool
-./.venv/bin/ds hot --chains=solana,base --limit=10
+ds hot --chains solana --limit 10
+```
+
+### "Show me tokens on Base too"
+```bash
+ds hot --chains solana,base --limit 15
+```
+
+### "I want a live feed that updates automatically"
+```bash
+ds new-runners-watch --chain=solana --watch-chains=solana,base --profile=discovery --max-age-hours=48 --include-unknown-age --interval=2
+```
+
+### "Show me brand new tokens that just launched"
+```bash
+ds new-runners --chain solana
+ds top-new --chain base
+```
+
+### "Find me alpha - new drops with breakout potential"
+```bash
+ds alpha-drops --chains solana,base
+```
+
+### "Search for a specific token"
+```bash
+ds search pepe
+ds search 0x6982508145454ce325ddbe47a25d4ec3d2311933
+```
+
+### "I found a token, give me everything on it"
+```bash
+ds inspect So11111111111111111111111111111111111111112 --chain solana
+```
+
+### "Alert me on Discord when something hot appears"
+```bash
+ds task create my-alerts --preset scout --interval-seconds 60
+ds task configure my-alerts --discord-webhook-url https://discord.com/api/webhooks/YOUR/WEBHOOK
+ds task test-alert my-alerts
+ds task daemon --all
+```
+
+### "I want JSON output for my own scripts"
+```bash
+ds hot --json
+ds hot --chains solana --limit 5 --json > tokens.json
 ```
 
 ---
 
 ## Commands
 
-### One-Shot Scans
+### Scans
 
 | Command | What it does |
 |---------|-------------|
@@ -226,63 +253,34 @@ cd /path/to/dexscreener-cli-mcp-tool
 | `ds ai-top` | AI-themed token leaderboard |
 | `ds inspect <address>` | Deep-dive on a specific token |
 
-### Real-Time Live Dashboards
+### Live Dashboards
 
 Three live modes that auto-refresh and keep your terminal updated. Press `Ctrl+C` to stop any of them.
 
-Important: this project uses **live polling** of public APIs, not websocket streaming. The CLI now uses a rate-aware default Dex cache of **10 seconds**, which is tuned to Dexscreener's documented free limits. That means the screen can repaint faster than new upstream data arrives.
-
-**`ds watch`** - Live hot runner board
-
-The simplest live mode. Shows the same hot runner table as `ds hot`, but refreshes automatically.
-
-```bash
-ds watch                                        # All chains, refreshes every 2s
-ds watch --chains solana --limit 10            # Solana only, keeps the 2s live default
-ds watch --preset my-degen                       # Use your custom profile
-```
-
-**`ds new-runners-watch`** - Live new runner tracker
-
-Full-screen dashboard with keyboard controls. Shows new tokens with rank movers, flow panels, and spotlight cards.
-
-```bash
-ds new-runners-watch --chain solana              # Watch Solana runners
-ds new-runners-watch --chain base --watch-chains base,solana  # Watch Base first, keep chain switching
-ds new-runners-watch --chain solana --watch-chains solana,base,ethereum  # Enable chain switching
-```
-
-Recommended right now:
-
-```bash
-ds new-runners-watch --chain=solana --watch-chains=solana,base --profile=discovery --max-age-hours=48 --include-unknown-age --interval=2
-```
-
-This is the most useful live board in the current build. It is more informative than `ds watch` and usually surfaces more names than `alpha-drops-watch`.
-
-Keyboard shortcuts while running:
-- `1-9` - Switch between chains (if `--watch-chains` is set)
-- `s` - Cycle sort mode (score / readiness / relative strength / volume / momentum)
-- `j/k` - Select a row up/down
-- `c` - Copy selected token address to clipboard
-
-**`ds alpha-drops-watch`** - Live alpha drop scanner with alerts
-
-Same as new-runners-watch but focused on breakout-ready tokens. Can send alerts directly to Discord/Telegram as it finds them.
-
-```bash
-ds alpha-drops-watch --chains solana,base        # Watch for alpha drops, refreshes every 2s
-ds alpha-drops-watch --chains solana --discord-webhook-url https://discord.com/api/webhooks/YOUR/WEBHOOK  # With Discord alerts
-ds alpha-drops-watch --chains solana --alert-min-score 75 --alert-cooldown-seconds 120  # Alert only high scores, 2min cooldown
-```
+| Command | What it does |
+|---------|-------------|
+| `ds watch` | Live hot runner board (simplest) |
+| `ds new-runners-watch` | Full-screen new runner tracker with keyboard controls (recommended) |
+| `ds alpha-drops-watch` | Live alpha drop scanner with optional Discord/Telegram alerts |
 
 **Tips for all live modes:**
-- Use `--interval 5` if you want slower, less chatty screen refreshes (default is 2 seconds)
-- Use `--limit` to control how many tokens show (fewer = faster scans)
-- Use `--profile discovery` to cast a wider net and see more tokens
-- Use `--no-screen` (on new-runners-watch and alpha-drops-watch) to avoid fullscreen mode
-- If Solana is quiet, switch to Base with `1` / `2` hotkeys or start on Base directly
-- If a live board shows nothing, widen it with `--max-age-hours=48 --include-unknown-age --profile=discovery`
+- `--interval 5` for slower, less chatty refreshes (default is 2 seconds)
+- `--limit` to control how many tokens show (fewer = faster)
+- `--profile discovery` to cast a wider net
+- `1`/`2` keys to switch chains (if `--watch-chains` is set)
+- `s` to cycle sort mode, `j/k` to navigate, `c` to copy address
+
+### Setup & Maintenance
+
+| Command | What it does |
+|---------|-------------|
+| `ds setup` | Pick your chains and preferences (5 quick questions) |
+| `ds quickstart` | Print exact copy-paste commands for your shell |
+| `ds doctor` | Diagnose issues and verify your setup |
+| `ds update` | Pull latest code and reinstall |
+
+<details>
+<summary><strong>More commands (profiles, tasks, import/export)</strong></summary>
 
 ### Custom Scan Profiles
 
@@ -304,19 +302,6 @@ ds preset delete my-degen
 
 The 3 built-in profiles (strict / balanced / discovery) are always available. Your custom profiles sit on top.
 
-### Setup & Maintenance
-
-| Command | What it does |
-|---------|-------------|
-| `ds setup` | Interactive wizard - builds a "default" profile from 5 questions |
-| `ds quickstart` | Print exact copy-paste commands for live scans, hot scans, or MCP setup |
-| `ds doctor` | Diagnose issues and verify your setup |
-| `ds update` | Pull latest code and reinstall |
-| `ds profiles` | Show built-in filter thresholds per chain |
-| `ds rate-stats` | Show runtime API usage, limits, and cache timing |
-| `ds why` | Explain why the project uses Dexscreener and what it optimizes for |
-| `ds god-prompt` | Print the repo's long-form extension prompt for AI-assisted development |
-
 ### Tasks & Alerts
 
 Set up automated scans that run on a schedule and alert you via Discord, Telegram, or webhooks.
@@ -336,179 +321,51 @@ Set up automated scans that run on a schedule and alert you via Discord, Telegra
 
 ### Import / Export State
 
-Use these when you want to move your presets, tasks, and task history between machines or keep a backup.
-
 | Command | What it does |
 |---------|-------------|
 | `ds state export --path backup.json` | Export presets, tasks, and runs to one JSON file |
 | `ds state import --path backup.json` | Import presets, tasks, and runs from a JSON file |
 
-### Output
+### Additional Commands
 
-Use `--json` on supported one-shot commands for machine-readable output. The main JSON-friendly commands are `ds hot`, `ds search`, `ds inspect`, `ds task run`, and `ds rate-stats`.
+| Command | What it does |
+|---------|-------------|
+| `ds profiles` | Show built-in filter thresholds per chain |
+| `ds rate-stats` | Show runtime API usage, limits, and cache timing |
+| `ds why` | Explain why the project uses Dexscreener and what it optimizes for |
+| `ds god-prompt` | Print the repo's long-form extension prompt for AI-assisted development |
 
-```bash
-ds hot --json
-ds search pepe --json
-ds inspect So11111111111111111111111111111111111111112 --chain solana --json
-```
+### JSON Output
 
----
-
-## What Can I Do With This?
-
-### "I just want to see what's hot right now"
-
-```bash
-ds hot
-```
-
-Shows the top trending tokens across all chains, scored and ranked. Done.
-
-### "I only care about Solana"
-
-```bash
-ds hot --chains solana --limit 10
-```
-
-### "Show me tokens on Base too"
-
-```bash
-ds hot --chains solana,base --limit 15
-```
-
-### "I want a live feed that updates automatically"
-
-```bash
-ds new-runners-watch --chain=solana --watch-chains=solana,base --profile=discovery --max-age-hours=48 --include-unknown-age --interval=2
-```
-
-This is the best live mode for most users. It refreshes the board continuously and gives chain switching, rank movers, spotlight cards, and change cues.
-
-### "Show me brand new tokens that just launched"
-
-```bash
-ds new-runners --chain solana
-ds top-new --chain base
-```
-
-### "I want a live feed of new launches only"
-
-```bash
-ds new-runners-watch --chain=solana --watch-chains=solana,base --profile=discovery --max-age-hours=48 --include-unknown-age --interval=2
-```
-
-### "Find me alpha - new drops with breakout potential"
-
-```bash
-ds alpha-drops --chains solana,base
-```
-
-Or live with auto-refresh:
-```bash
-ds alpha-drops-watch --chains solana,base
-```
-
-### "Search for a specific token"
-
-```bash
-ds search pepe
-ds search 0x6982508145454ce325ddbe47a25d4ec3d2311933    # by address
-```
-
-### "I found a token, give me everything on it"
-
-```bash
-ds inspect So11111111111111111111111111111111111111112 --chain solana
-```
-
-### "I want to filter differently than the defaults"
-
-Save your own profile and reuse it everywhere:
-
-```bash
-ds preset save my-degen --chains solana,base --limit 20 --min-liquidity-usd 5000 --min-txns-h1 3
-
-ds hot --preset my-degen
-ds watch --preset my-degen
-```
-
-### "Alert me on Discord when something hot appears"
-
-```bash
-# 1. Save your filter profile
-ds preset save scout --chains solana --limit 10 --min-liquidity-usd 10000
-
-# 2. Create a task that scans every 60 seconds
-ds task create my-alerts --preset scout --interval-seconds 60
-
-# 3. Add your Discord webhook
-ds task configure my-alerts --discord-webhook-url https://discord.com/api/webhooks/YOUR/WEBHOOK
-
-# 4. Test it
-ds task test-alert my-alerts
-
-# 5. Start the scanner
-ds task daemon --all
-```
-
-Works the same with Telegram:
-```bash
-ds task configure my-alerts --telegram-bot-token YOUR_BOT_TOKEN --telegram-chat-id YOUR_CHAT_ID
-```
-
-### "I want JSON output for my own scripts"
+Use `--json` on supported one-shot commands for machine-readable output:
 
 ```bash
 ds hot --json
 ds search pepe --json
 ds inspect So11111111111111111111111111111111111111112 --chain solana --json
-ds hot --chains solana --limit 5 --json > tokens.json
 ```
 
-### "I want an AI agent to use this"
-
-The best live experience is still the CLI. MCP and the skill file are the guidance layer: they help Claude, Codex, OpenClaw, and other agents tell you what to run, call scan/search/task tools in natural language, and reduce the terminal friction.
-
-Start the MCP server and connect it to Claude, Codex, or any MCP-compatible agent:
-```bash
-./.venv/bin/dexscreener-mcp
-```
-
-On Windows, if you have **not** activated the virtual environment, run the repo-local path instead:
-
-```cmd
-cd /d C:\path\to\dexscreener-cli-mcp-tool
-.\.venv\Scripts\dexscreener-mcp.exe
-```
-
-Then ask in natural language: "What's hot on Solana?" or "Find new tokens on Base with high volume."
+</details>
 
 ---
 
 ## MCP Server - Use It With AI Agents
-
-### Why use the MCP server?
 
 The MCP server lets you talk to your scanner in plain English through any AI agent. Instead of remembering CLI flags, you just ask:
 
 - "What's pumping on Solana right now?"
 - "Find me degen plays on Base with low liquidity"
 - "Save a preset called sol-degen for Solana discovery mode"
-- "Set up alerts for when something scores above 80"
-
-The agent calls the right MCP tool with the right parameters. You get the same data as the CLI, but through conversation.
 
 ### How to set it up
 
-**Step 1:** Make sure the CLI is installed (see [Quick Install](#quick-install) above).
+**Step 1:** Make sure the CLI is installed (see [Install](#install) above).
 
 **Step 2:** Add the MCP server to your AI agent's config.
 
-**Claude Desktop** - add to your `claude_desktop_config.json`.
+**Claude Desktop** - add to your `claude_desktop_config.json`:
 
-Mac/Linux example:
-
+Mac/Linux:
 ```json
 {
   "mcpServers": {
@@ -520,8 +377,7 @@ Mac/Linux example:
 }
 ```
 
-Windows example:
-
+Windows:
 ```json
 {
   "mcpServers": {
@@ -534,8 +390,7 @@ Windows example:
 
 **Claude Code** - add to your `.mcp.json` or project settings:
 
-Mac/Linux example:
-
+Mac/Linux:
 ```json
 {
   "mcpServers": {
@@ -546,8 +401,7 @@ Mac/Linux example:
 }
 ```
 
-Windows example:
-
+Windows:
 ```json
 {
   "mcpServers": {
@@ -562,9 +416,10 @@ Windows example:
 
 **Step 3:** Start talking.
 
-### Natural language examples
+<details>
+<summary><strong>Natural language examples and full MCP tool list</strong></summary>
 
-Once connected, just ask in plain English:
+### Natural language examples
 
 | You say | What happens |
 |---------|-------------|
@@ -573,20 +428,12 @@ Once connected, just ask in plain English:
 | "Find tokens on Base with high volume" | Scans Base with volume-focused filters |
 | "Search for pepe" | Searches Dexscreener for pepe tokens |
 | "Tell me about this token: 0x..." | Inspects the specific token address |
-| "What's the score breakdown for BONK?" | Searches + inspects with analytics |
 | "Save my current settings as degen-mode" | Creates a named preset |
-| "Show me my presets" | Lists all saved presets |
 | "Set up a task that scans Solana every minute" | Creates a scheduled task |
 | "Add Discord alerts to my task" | Configures alert channels on a task |
-| "Test my alerts" | Sends a test alert through configured channels |
 | "What are the API limits looking like?" | Shows rate budget and usage stats |
-| "Export my config" | Exports all presets, tasks, and history as JSON |
-
-The agent figures out which MCP tool to call and what parameters to use. You don't need to know the tool names.
 
 ### All 15 MCP tools
-
-For reference, these are the tools the agent has access to:
 
 | Tool | What it does |
 |------|-------------|
@@ -608,33 +455,18 @@ For reference, these are the tools the agent has access to:
 
 Plus 4 resources (`dexscreener://profiles`, `dexscreener://presets`, `dexscreener://tasks`, `dexscreener://cli-guide`) and 3 prompts (`alpha_scan_plan`, `runner_triage`, `cli_quickstart_guide`).
 
+</details>
+
 ---
 
 ## AI Skill File
 
-For AI coding agents that use skill files (Claude Code, Codex, OpenClaw), load `SKILL.md` from this repo. It teaches the agent:
-
-- When to activate (trigger phrases like "what's hot", "find me alpha", etc.)
-- How to map natural language to the right tool calls
-- Chain identification ("Solana" -> `solana`, "BSC" -> `bsc`)
-- Filter profile selection based on user intent
-- How to explain scores and present results
-- Error handling and troubleshooting
-
-```bash
-# Point your agent at the skill file:
-SKILL.md
-```
-
-On Windows, the actual path is:
-
-```text
-C:\path\to\dexscreener-cli-mcp-tool\SKILL.md
-```
-
-See `SKILL.md` for the full specification.
+For AI coding agents that use skill files (Claude Code, Codex, OpenClaw), load `SKILL.md` from this repo. It teaches the agent when to activate, how to map natural language to tool calls, chain identification, filter selection, score explanation, and error handling.
 
 ---
+
+<details>
+<summary><strong>APIs & Data Sources</strong></summary>
 
 ## APIs & Data Sources
 
@@ -685,13 +517,55 @@ Dexscreener enforces:
 
 The scanner handles this automatically with separate rate-limit buckets, 10-second caching, and retry/backoff. Holder data is cached for 15 minutes. You don't need to worry about hitting limits.
 
----
+</details>
+
+<details>
+<summary><strong>Scan Profiles</strong></summary>
+
+## Scan Profiles
+
+Three built-in filter profiles, applied with chain-specific multipliers:
+
+| Profile | Min Liquidity | Min 24h Volume | Min Txns/h | Good for |
+|---------|--------------|----------------|------------|----------|
+| **discovery** | $8,000 | $10,000 | 5 | Finding early gems, degen plays, micro-caps |
+| **balanced** | $20,000 | $40,000 | 25 | General scanning, mix of safety and opportunity |
+| **strict** | $35,000 | $90,000 | 50 | Established tokens only, blue-chip filtering |
+
+Use `ds profiles --chains solana,base` to see chain-adjusted values.
+
+You can also create your own profiles with `ds preset save`.
+
+</details>
+
+<details>
+<summary><strong>How Scoring Works</strong></summary>
+
+## How Scoring Works
+
+Each token gets a 0-100 score based on 8 weighted components:
+
+| Component | What it measures |
+|-----------|-----------------|
+| **Volume velocity** | How fast trading volume is growing |
+| **Transaction velocity** | Rate of transaction count increase |
+| **Relative strength** | Performance compared to the chain average |
+| **Breakout readiness** | Price compression patterns (coiling before a move) |
+| **Boost velocity** | Rate of Dexscreener boost activity |
+| **Momentum decay** | Whether momentum is sustaining or fading |
+| **Liquidity depth** | Health and depth of the liquidity pool |
+| **Flow pressure** | Buy vs sell transaction imbalance |
+
+**What the scores mean:** 80+ = very hot, 60-80 = interesting, 40-60 = moderate, below 40 = weak
+
+</details>
+
+<details>
+<summary><strong>Extend & Customize</strong></summary>
 
 ## Extend & Customize
 
 ### Combine with free tools
-
-Use scan results as a starting point, then layer on these complementary tools for a full workflow:
 
 | Use Case | Tools | Free? |
 |----------|-------|-------|
@@ -737,6 +611,8 @@ ds task configure my-bot --webhook-url https://your-server.com/hook
 **No-code automations:**
 - Use the webhook URL with [n8n](https://n8n.io/) or [Zapier](https://zapier.com/) to pipe alerts into spreadsheets, databases, or messaging apps.
 
+</details>
+
 ---
 
 ## Environment Variables
@@ -752,41 +628,6 @@ For disclosure and reporting guidance, see [SECURITY.md](SECURITY.md).
 
 ---
 
-## Scan Profiles
-
-Three built-in filter profiles, applied with chain-specific multipliers:
-
-| Profile | Min Liquidity | Min 24h Volume | Min Txns/h | Good for |
-|---------|--------------|----------------|------------|----------|
-| **discovery** | $8,000 | $10,000 | 5 | Finding early gems, degen plays, micro-caps |
-| **balanced** | $20,000 | $40,000 | 25 | General scanning, mix of safety and opportunity |
-| **strict** | $35,000 | $90,000 | 50 | Established tokens only, blue-chip filtering |
-
-Use `ds profiles --chains solana,base` to see chain-adjusted values.
-
-You can also create your own profiles with `ds preset save` (see [Custom Scan Profiles](#custom-scan-profiles) above).
-
----
-
-## How Scoring Works
-
-Each token gets a 0-100 score based on 8 weighted components:
-
-| Component | What it measures |
-|-----------|-----------------|
-| **Volume velocity** | How fast trading volume is growing |
-| **Transaction velocity** | Rate of transaction count increase |
-| **Relative strength** | Performance compared to the chain average |
-| **Breakout readiness** | Price compression patterns (coiling before a move) |
-| **Boost velocity** | Rate of Dexscreener boost activity |
-| **Momentum decay** | Whether momentum is sustaining or fading |
-| **Liquidity depth** | Health and depth of the liquidity pool |
-| **Flow pressure** | Buy vs sell transaction imbalance |
-
-**What the scores mean:** 80+ = very hot, 60-80 = interesting, 40-60 = moderate, below 40 = weak
-
----
-
 ## Troubleshooting
 
 | Problem | Fix |
@@ -795,7 +636,7 @@ Each token gets a 0-100 score based on 8 weighted components:
 | Only Solana results | Expected when Solana dominates Dexscreener boosts. Try `--chains base` |
 | Unicode garbled | Run `chcp 65001` (Windows) or use a modern terminal |
 | `Option '--profile' requires an argument` | You pressed Enter too early. Run `--profile=discovery` on the same line |
-| `ds` is not recognized | Use `.\.venv\Scripts\ds.exe` on Windows if you did not activate the environment |
+| `ds` is not recognized | Make sure you're in the project folder, or use the full path `.\.venv\Scripts\ds.exe` |
 | Import errors | Run `ds doctor` then `ds update` |
 | API timeouts | Check internet, run `ds doctor` to verify API connectivity |
 
